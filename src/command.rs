@@ -1,4 +1,4 @@
-use crate::model::world::Direction;
+use crate::model::{player::Player, world::{Direction, World}};
 
 pub enum Command {
     Go(Direction)
@@ -7,6 +7,14 @@ pub enum Command {
 pub enum CommandParseError {
     UnknownCommand(String),
     InvalidSyntax(String)
+}
+
+pub enum CommandExecutionError {
+    /// Command was invalid; string provides player-readable reason why.
+    InvalidCommand(String),
+
+    /// Command could not be executed due to an unrecoverable error.
+    Unrecoverable(String)
 }
 
 impl Command {
@@ -42,3 +50,16 @@ impl Command {
         }
     }
 }
+
+/// Handle 'go <direction>'
+pub fn handle_go(world: &World, player: &mut Player, direction: Direction) -> Result<(), CommandExecutionError> {
+    let current_room = world.get_room(player.current_room())
+        .ok_or(CommandExecutionError::Unrecoverable("Could not retrieve room based on current room ID".into()))?;
+
+    let destination_room_id = current_room.get_destination(direction)
+        .ok_or(CommandExecutionError::InvalidCommand(format!("You cannot go {direction} from here.")))?;
+
+    player.move_to(destination_room_id);
+    Ok(())
+}
+

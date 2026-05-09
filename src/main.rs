@@ -3,8 +3,9 @@ use std::sync::Arc;
 use tokio::net::{TcpListener, tcp::WriteHalf, tcp::ReadHalf};
 use tokio::io::{AsyncWriteExt, AsyncBufReadExt, BufReader};
 
+use crate::command::{CommandExecutionError, handle_go};
 use crate::model::player::Player;
-use crate::model::world::RoomId;
+use crate::model::world::{RoomId, World};
 
 mod model;
 mod command;
@@ -25,10 +26,10 @@ async fn player_welcome(writer: &mut WriteHalf<'_>, player: &Player) -> Result<(
 }
 
 /// Execute the game loop for the given player.
-async fn player_loop(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHalf<'_>>, player: Player) -> Result<(), Error> {
+async fn player_loop(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHalf<'_>>, world: Arc<World>, mut player: Player) -> Result<(), Error> {
     let mut line = String::new();
 
-    let name = player.name();
+    let name = player.name().to_owned();
 
     loop {
         line.clear();
@@ -40,7 +41,16 @@ async fn player_loop(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHalf
             _ => {
                 let input = line.trim();
                 match command::Command::parse(input) {
-                    Ok(command::Command::Go(d)) => format!("You go {d}"),
+                    Ok(command::Command::Go(d)) => {
+                        match handle_go(&world, &mut player, d) {
+                            Ok(_) => format!("You go {d}"),
+                            Err(CommandExecutionError::InvalidCommand(s)) => s,
+                            Err(CommandExecutionError::Unrecoverable(s)) => {
+                                tracing::error!("Unrecoverable error occurred processing command from '{name}': {s}");
+                                format!("Cannot execute command: {s}")
+                            }
+                        }
+                    }
                     Err(command::CommandParseError::UnknownCommand(s)) => format!("Unknown command: '{s}'"),
                     Err(command::CommandParseError::InvalidSyntax(s)) => s
                 }
@@ -66,6 +76,8 @@ async fn main() -> Result<(), Error> {
         let (mut socket, addr) = listener.accept().await?;
         tracing::info!("Handling connection from {addr}");
 
+        let world = world.clone();
+
         tokio::spawn(async move {
             let (reader, mut writer) = socket.split();
             let mut reader = BufReader::new(reader);
@@ -75,7 +87,7 @@ async fn main() -> Result<(), Error> {
 
             if result.is_ok()
             {
-                player_loop(&mut writer, &mut reader, player).await.unwrap_or_else(|e| {
+                player_loop(&mut writer, &mut reader, world, player).await.unwrap_or_else(|e| {
                     tracing::error!("Error during player loop: {e}");
                 });
             }

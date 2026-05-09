@@ -9,7 +9,7 @@ impl RoomId {
     }
 }
 
-#[derive(Hash, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
 pub enum Direction {
     North,
     South,
@@ -33,6 +33,12 @@ pub struct Room {
     name: String,
     description: String,
     exits: HashMap<Direction, RoomId>
+}
+
+impl Room {
+    pub fn get_destination<'a>(&'a self, direction: Direction) -> Option<&'a RoomId> {
+        self.exits.get(&direction)
+    }
 }
 
 pub struct World {
