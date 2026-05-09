@@ -1,14 +1,55 @@
 use std::io::Error;
 use std::sync::Arc;
-use std::net::SocketAddr;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::{TcpListener, tcp::WriteHalf, tcp::ReadHalf};
 use tokio::io::{AsyncWriteExt, AsyncBufReadExt, BufReader};
+
+use crate::model::player::Player;
+use crate::model::world::RoomId;
 
 mod model;
 mod command;
 
-async fn handle_new_connection(socket: &mut TcpStream, addr: &SocketAddr) -> Result<(), Error> {
-    
+async fn send(writer: &mut WriteHalf<'_>, s: &str) -> Result<(), Error> {
+    writer.write_all(format!("{s}\n").as_bytes()).await
+}
+
+/// Create a new player.
+fn player_init() -> Player {
+    Player::new(RoomId::new(0))
+}
+
+/// Welcome the given player to the game.
+async fn player_welcome(writer: &mut WriteHalf<'_>, player: &Player) -> Result<(), Error> {
+    let name = player.name();
+    send(writer, &format!("Welcome {name}!")).await
+}
+
+/// Execute the game loop for the given player.
+async fn player_loop(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHalf<'_>>, player: Player) -> Result<(), Error> {
+    let mut line = String::new();
+
+    let name = player.name();
+
+    loop {
+        line.clear();
+        let response = match reader.read_line(&mut line).await? {
+            0 => {
+                tracing::info!("Player '{name}' disconnected");
+                break;
+            }
+            _ => {
+                let input = line.trim();
+                match command::Command::parse(input) {
+                    Ok(command::Command::Go(d)) => format!("You go {d}"),
+                    Err(command::CommandParseError::UnknownCommand(s)) => format!("Unknown command: '{s}'"),
+                    Err(command::CommandParseError::InvalidSyntax(s)) => s
+                }
+            }
+        };
+
+        writer.write_all(format!("{response}\n").as_bytes()).await?
+    }
+
     Ok(())
 }
 
@@ -27,42 +68,20 @@ async fn main() -> Result<(), Error> {
 
         tokio::spawn(async move {
             let (reader, mut writer) = socket.split();
-
-            match writer.write_all(b"Welcome!\n").await {
-                Ok(_) => tracing::debug!("Sent welcome message to {addr}"),
-                Err(e) => tracing::error!("Error sending message to {addr}")
-            };
-
-            let mut player = model::player::Player::new(model::world::RoomId::new(0));
             let mut reader = BufReader::new(reader);
 
-            let mut line = String::new();
+            let player = player_init();
+            let result = player_welcome(&mut writer, &player).await;
 
-            loop {
-                line.clear();
-                let response = match reader.read_line(&mut line).await {
-                    Ok(0) => {
-                        tracing::info!("Client {addr} disconnected");
-                        break;
-                    }
-                    Ok(_) => {
-                        let input = line.trim();
-                        match command::Command::parse(input) {
-                            Ok(command::Command::Go(d)) => format!("You go {d}"),
-                            Err(command::CommandParseError::UnknownCommand(s)) => format!("Unknown command: '{s}'"),
-                            Err(command::CommandParseError::InvalidSyntax(s)) => s
-                        }
-                    }
-                    Err(e) => {
-                        tracing::error!("Error reading from {addr}: {e}");
-                        break;
-                    }
-                };
-
-                match writer.write_all(format!("{response}\n").as_bytes()).await {
-                    Ok(_) => tracing::debug!("Sent response to {addr}: '{response}'"),
-                    Err(e) => tracing::error!("Error sending response to {addr}")
-                }
+            if result.is_ok()
+            {
+                player_loop(&mut writer, &mut reader, player).await.unwrap_or_else(|e| {
+                    tracing::error!("Error during player loop: {e}");
+                });
+            }
+            else {
+                let e = result.unwrap_err();
+                tracing::error!("Error welcoming player: {e}");
             }
 
             tracing::info!("Connection from {addr} closed");
