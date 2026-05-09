@@ -47,6 +47,10 @@ impl Room {
     pub fn description(&self) -> &str {
         &self.description
     }
+
+    pub fn exits(&self) -> Vec<Direction> {
+        self.exits.keys().map(|d| *d).collect()
+    }
 }
 
 pub struct World {

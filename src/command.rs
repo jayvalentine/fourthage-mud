@@ -76,5 +76,8 @@ pub fn handle_look(world: &World, player: &Player) -> Result<String, CommandExec
 
     let room_name = current_room.name();
     let room_desc = current_room.description();
-    Ok(format!("{room_name}\n\n{room_desc}\n"))
+    let exits: Vec<String> = current_room.exits().into_iter().map(|e| e.to_string()).collect();
+    let exits = exits.join(", ");
+
+    Ok(format!("{room_name}\n\n{room_desc}\n\nFrom here you can go: {exits}\n"))
 }
