@@ -49,7 +49,7 @@ impl Room {
     }
 
     pub fn exits(&self) -> Vec<Direction> {
-        self.exits.keys().map(|d| *d).collect()
+        self.exits.keys().copied().collect()
     }
 }
 
