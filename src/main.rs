@@ -7,12 +7,20 @@ use tokio::io::BufReader;
 mod model;
 mod command;
 mod session;
+mod data;
+
+use model::world::World;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     tracing_subscriber::fmt::init();
 
-    let world = Arc::new(model::world::get_world());
+    let rooms = data::get_rooms("data/rooms/rooms.json").unwrap_or_else(|e| {
+        tracing::error!("Error loading room data: {e}");
+        panic!("Initialisation failed!");
+    });
+
+    let world = Arc::new(World::new(rooms));
 
     let listener = TcpListener::bind("127.0.0.1:8080").await?;
     tracing::info!("Listening on port 8080");

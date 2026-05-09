@@ -1,6 +1,7 @@
 use std::{collections::HashMap, fmt};
+use serde::Deserialize;
 
-#[derive(Clone, Hash, PartialEq, Eq)]
+#[derive(Clone, Hash, PartialEq, Eq, Deserialize, Debug)]
 pub struct RoomId(u32);
 
 impl RoomId {
@@ -9,7 +10,7 @@ impl RoomId {
     }
 }
 
-#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, Hash, PartialEq, Eq, Deserialize, Debug)]
 pub enum Direction {
     North,
     South,
@@ -28,6 +29,7 @@ impl fmt::Display for Direction {
     }
 }
 
+#[derive(Deserialize, Debug)]
 pub struct Room {
     id: RoomId,
     name: String,
@@ -58,59 +60,13 @@ pub struct World {
 }
 
 impl World {
+    pub fn new(rooms: Vec<Room>) -> World {
+        let rooms: HashMap<RoomId, Room> = rooms.into_iter().map(|room| (room.id.clone(), room)).collect();
+
+        World { rooms }
+    }
+
     pub fn get_room(&self, id: &RoomId) -> Option<&Room> {
         self.rooms.get(id)
     }
-}
-
-pub fn get_world() -> World {
-    let rooms: Vec<Room> = vec![
-        Room {
-            id: RoomId(0),
-            name: "North Room".into(),
-            description: "The room in the north".into(),
-            exits: HashMap::from([
-                (Direction::South, RoomId(4))
-            ])
-        },
-        Room {
-            id: RoomId(1),
-            name: "West Room".into(),
-            description: "The room in the west".into(),
-            exits: HashMap::from([
-                (Direction::East, RoomId(4))
-            ])
-        },
-        Room {
-            id: RoomId(2),
-            name: "South Room".into(),
-            description: "The room in the south".into(),
-            exits: HashMap::from([
-                (Direction::North, RoomId(4))
-            ])
-        },
-        Room {
-            id: RoomId(3),
-            name: "East Room".into(),
-            description: "The room in the east".into(),
-            exits: HashMap::from([
-                (Direction::West, RoomId(4))
-            ])
-        },
-        Room {
-            id: RoomId(4),
-            name: "Central Room".into(),
-            description: "The room in the middle".into(),
-            exits: HashMap::from([
-                (Direction::North, RoomId(0)),
-                (Direction::West, RoomId(1)),
-                (Direction::South, RoomId(2)),
-                (Direction::East, RoomId(3)),
-            ])
-        }
-    ];
-
-    let rooms: HashMap<RoomId, Room> = rooms.into_iter().map(|room| (room.id.clone(), room)).collect();
-
-    World { rooms }
 }

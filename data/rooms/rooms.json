@@ -1,0 +1,18 @@
+[
+    {
+        "id": 0,
+        "name": "Starting Room",
+        "description": "The room that you start in.",
+        "exits": {
+            "North": 1
+        }
+    },
+    {
+        "id": 1,
+        "name": "Other Room",
+        "description": "The room that you didn't start in.",
+        "exits": {
+            "South": 0
+        }
+    }
+]
