@@ -63,7 +63,7 @@ pub async fn run(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHalf<'_>
             }
         };
 
-        writer.write_all(format!("{response}\n").as_bytes()).await?
+        send(writer, &response).await?
     }
 
     Ok(())
