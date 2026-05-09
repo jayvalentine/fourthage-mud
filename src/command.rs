@@ -43,7 +43,7 @@ impl Command {
                 };
                 let direction = match Self::parse_direction(direction) {
                     Some(d) => d,
-                    None => return Err(CommandParseError::UnknownCommand(input.to_string()))
+                    None => return Err(CommandParseError::InvalidSyntax(format!("You can't go {direction}!")))
                 };
                 Ok(Command::Go(direction))
             },
