@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::net::{TcpListener, tcp::WriteHalf, tcp::ReadHalf};
 use tokio::io::{AsyncWriteExt, AsyncBufReadExt, BufReader};
 
-use crate::command::{CommandExecutionError, handle_go};
+use crate::command::{Command, CommandParseError, CommandExecutionError, handle_go, handle_look};
 use crate::model::player::Player;
 use crate::model::world::{RoomId, World};
 
@@ -40,10 +40,15 @@ async fn player_loop(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHalf
             }
             _ => {
                 let input = line.trim();
-                match command::Command::parse(input) {
-                    Ok(command::Command::Go(d)) => {
-                        match handle_go(&world, &mut player, d) {
-                            Ok(_) => format!("You go {d}"),
+                match Command::parse(input) {
+                    Ok(command) => {
+                        let result = match command {
+                            Command::Go(direction) => handle_go(&world, &mut player, direction),
+                            Command::Look => handle_look(&world, &mut player)
+                        };
+
+                        match result {
+                            Ok(s) => s,
                             Err(CommandExecutionError::InvalidCommand(s)) => s,
                             Err(CommandExecutionError::Unrecoverable(s)) => {
                                 tracing::error!("Unrecoverable error occurred processing command from '{name}': {s}");
@@ -51,8 +56,8 @@ async fn player_loop(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHalf
                             }
                         }
                     }
-                    Err(command::CommandParseError::UnknownCommand(s)) => format!("Unknown command: '{s}'"),
-                    Err(command::CommandParseError::InvalidSyntax(s)) => s
+                    Err(CommandParseError::UnknownCommand(s)) => format!("Unknown command: '{s}'"),
+                    Err(CommandParseError::InvalidSyntax(s)) => s
                 }
             }
         };

@@ -39,6 +39,14 @@ impl Room {
     pub fn get_destination<'a>(&'a self, direction: Direction) -> Option<&'a RoomId> {
         self.exits.get(&direction)
     }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn description(&self) -> &str {
+        &self.description
+    }
 }
 
 pub struct World {

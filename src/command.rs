@@ -1,7 +1,8 @@
 use crate::model::{player::Player, world::{Direction, World}};
 
 pub enum Command {
-    Go(Direction)
+    Go(Direction),
+    Look
 }
 
 pub enum CommandParseError {
@@ -45,6 +46,9 @@ impl Command {
                     None => return Err(CommandParseError::UnknownCommand(input.to_string()))
                 };
                 Ok(Command::Go(direction))
+            },
+            "look" => {
+                Ok(Command::Look)
             }
             _ => Err(CommandParseError::UnknownCommand(input.to_string())),
         }
@@ -52,7 +56,7 @@ impl Command {
 }
 
 /// Handle 'go <direction>'
-pub fn handle_go(world: &World, player: &mut Player, direction: Direction) -> Result<(), CommandExecutionError> {
+pub fn handle_go(world: &World, player: &mut Player, direction: Direction) -> Result<String, CommandExecutionError> {
     let current_room = world.get_room(player.current_room())
         .ok_or(CommandExecutionError::Unrecoverable("Could not retrieve room based on current room ID".into()))?;
 
@@ -60,6 +64,17 @@ pub fn handle_go(world: &World, player: &mut Player, direction: Direction) -> Re
         .ok_or(CommandExecutionError::InvalidCommand(format!("You cannot go {direction} from here.")))?;
 
     player.move_to(destination_room_id);
-    Ok(())
+
+    let description = handle_look(world, player)?;
+
+    Ok(format!("You go {direction}.\n\n{description}"))
 }
 
+pub fn handle_look(world: &World, player: &Player) -> Result<String, CommandExecutionError> {
+    let current_room = world.get_room(player.current_room())
+        .ok_or(CommandExecutionError::Unrecoverable("Could not retrieve room based on current room ID".into()))?;
+
+    let room_name = current_room.name();
+    let room_desc = current_room.description();
+    Ok(format!("{room_name}\n\n{room_desc}\n"))
+}
