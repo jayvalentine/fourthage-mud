@@ -2,7 +2,8 @@ use crate::model::{player::Player, world::{Direction, World}};
 
 pub enum Command {
     Go(Direction),
-    Look
+    Look,
+    Quit
 }
 
 pub enum CommandParseError {
@@ -47,9 +48,8 @@ impl Command {
                 };
                 Ok(Command::Go(direction))
             },
-            "look" => {
-                Ok(Command::Look)
-            }
+            "look" => Ok(Command::Look),
+            "quit" => Ok(Command::Quit),
             _ => Err(CommandParseError::UnknownCommand(input.to_string())),
         }
     }
