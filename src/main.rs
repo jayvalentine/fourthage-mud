@@ -31,7 +31,7 @@ async fn main() -> Result<(), AppError> {
 
     let world = Arc::new(World::new(rooms));
 
-    let listener = TcpListener::bind("127.0.0.1:8080").await.map_err(|e| {
+    let listener = TcpListener::bind("0.0.0.0:8080").await.map_err(|e| {
         tracing::error!("Error starting TCP listener: {e}");
         AppError::InitialisationError
     })?;
