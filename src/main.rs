@@ -19,14 +19,19 @@ enum AppError {
 async fn main() -> Result<(), AppError> {
     tracing_subscriber::fmt::init();
 
-    let rooms = data::get_rooms("data/rooms/rooms.json").map_err(|e| {
+    let data_path = std::env::var("MUD_DATA_DIR").map_err(|e| {
+       tracing::error!("Error reading MUD_DATA_DIR environment variable: {e}");
+       AppError::InitialisationError 
+    })?;
+
+    let rooms = data::get_rooms(&format!("{data_path}/rooms/rooms.json")).map_err(|e| {
         tracing::error!("Error loading room data: {e}");
         AppError::InitialisationError
     })?;
 
     let world = Arc::new(World::new(rooms));
 
-    let listener = TcpListener::bind("127.0.0.1:8080").await.map_err(|e| {
+    let listener = TcpListener::bind("0.0.0.0:8080").await.map_err(|e| {
         tracing::error!("Error starting TCP listener: {e}");
         AppError::InitialisationError
     })?;
