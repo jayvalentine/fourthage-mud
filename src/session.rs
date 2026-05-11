@@ -45,7 +45,13 @@ pub async fn run(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHalf<'_>
                     Ok(command) => {
                         let result = match command {
                             Command::Go(direction) => handle_go(&world, &mut player, direction),
-                            Command::Look => handle_look(&world, &mut player)
+                            Command::Look => handle_look(&world, &mut player),
+                            Command::Quit => {
+                                let name = player.name();
+                                tracing::info!("Player '{name}' quit");
+                                send(writer, &format!("Goodbye {name}!")).await?;
+                                break;
+                            }
                         };
 
                         match result {
