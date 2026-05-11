@@ -1,8 +1,20 @@
+use std::fmt;
+
 use crate::model::world::Room;
 
-enum DataLoadError {
+#[derive(Debug)]
+pub enum DataLoadError {
     FileRead,
     Deserialization
+}
+
+impl fmt::Display for DataLoadError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            DataLoadError::FileRead => write!(f, "Error loading data file"),
+            DataLoadError::Deserialization => write!(f, "Error deserializing data from file")
+        }
+    }
 }
 
 impl From<std::io::Error> for DataLoadError {
