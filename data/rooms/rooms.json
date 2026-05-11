@@ -31,7 +31,7 @@
     {
         "id": 3,
         "name": "Western Alcove",
-        "description": "A small alcove. Three sarcophogi are lined up against the wall.",
+        "description": "A small alcove. Three sarcophagi are lined up against the wall.",
         "exits": {
             "East": 2
         }
@@ -39,14 +39,14 @@
     {
         "id": 4,
         "name": "Eastern Alcove",
-        "description": "A small alcove. Two sarcophogi sit against either side of the room, with a pile of rubble where the third should be.",
+        "description": "A small alcove. Two sarcophagi sit against either side of the room, with a pile of rubble where the third should be.",
         "exits": {
             "West": 2
         }
     },
     {
         "id": 5,
-        "name": "Corridor",
+        "name": "Corridor End",
         "description": "The end of the narrow corridor.",
         "exits": {
             "South": 2,
@@ -65,7 +65,7 @@
     {
         "id": 7,
         "name": "Grand Hall",
-        "description": "This large hall is illuminated by sunlight streaming in through gaps in the roof. In the center of the room lies a single ornate sarcophogus.",
+        "description": "This large hall is illuminated by sunlight streaming in through gaps in the roof. In the center of the room lies a single ornate sarcophagus.",
         "exits": {
             "West": 5
         }
