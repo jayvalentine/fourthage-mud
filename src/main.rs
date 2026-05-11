@@ -33,27 +33,26 @@ async fn main() -> Result<(), AppError> {
     tracing::info!("Listening on port 8080");
 
     loop {
-        let result = listener.accept().await;
-        if result.is_err() {
-            let e = result.unwrap_err();
-            tracing::error!("Error handling new connection: {e}");
-            continue;
+        match listener.accept().await {
+            Ok((mut socket, addr)) => {
+                tracing::info!("Handling connection from {addr}");
+                let world = world.clone();
+
+                tokio::spawn(async move {
+                    let (reader, mut writer) = socket.split();
+                    let mut reader = BufReader::new(reader);
+
+                    session::run(&mut writer, &mut reader, world).await.unwrap_or_else(|e| {
+                        tracing::error!("Error during session from {addr}: {e}");
+                    });
+
+                    tracing::info!("Connection from {addr} closed");
+                });
+            },
+            Err(e) => {
+                tracing::error!("Error handling new connection: {e}");
+                continue;
+            }
         }
-
-        let (mut socket, addr) = result.unwrap();
-        tracing::info!("Handling connection from {addr}");
-
-        let world = world.clone();
-
-        tokio::spawn(async move {
-            let (reader, mut writer) = socket.split();
-            let mut reader = BufReader::new(reader);
-
-            session::run(&mut writer, &mut reader, world).await.unwrap_or_else(|e| {
-                tracing::error!("Error during session from {addr}: {e}");
-            });
-
-            tracing::info!("Connection from {addr} closed");
-        });
     }
 }
