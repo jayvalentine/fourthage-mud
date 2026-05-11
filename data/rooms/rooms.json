@@ -1,0 +1,73 @@
+[
+    {
+        "id": 0,
+        "name": "Orilesti Tomb Entrance",
+        "description":
+            "The icy wind howls against the mountainside. Before you stands an ornate stone door.",
+        "exits": {
+            "North": 1
+        }
+    },
+    {
+        "id": 1,
+        "name": "Antechamber",
+        "description": "This small room provides refuge from the harsh conditions outside. The walls are carved with scenes from the history of the city of Orilest.",
+        "exits": {
+            "South": 0,
+            "North": 2
+        }
+    },
+    {
+        "id": 2,
+        "name": "Corridor",
+        "description": "A narrow, claustrophobic corridor. Glowing orbs dimly illuminate the way ahead.",
+        "exits": {
+            "South": 1,
+            "West": 3,
+            "East": 4,
+            "North": 5
+        }
+    },
+    {
+        "id": 3,
+        "name": "Western Alcove",
+        "description": "A small alcove. Three sarcophagi are lined up against the wall.",
+        "exits": {
+            "East": 2
+        }
+    },
+    {
+        "id": 4,
+        "name": "Eastern Alcove",
+        "description": "A small alcove. Two sarcophagi sit against either side of the room, with a pile of rubble where the third should be.",
+        "exits": {
+            "West": 2
+        }
+    },
+    {
+        "id": 5,
+        "name": "Corridor End",
+        "description": "The end of the narrow corridor.",
+        "exits": {
+            "South": 2,
+            "West": 6,
+            "East": 7
+        }
+    },
+    {
+        "id": 6,
+        "name": "Storeroom",
+        "description": "A cramped storeroom, filled with embalming supplies.",
+        "exits": {
+            "East": 5
+        }
+    },
+    {
+        "id": 7,
+        "name": "Grand Hall",
+        "description": "This large hall is illuminated by sunlight streaming in through gaps in the roof. In the center of the room lies a single ornate sarcophagus.",
+        "exits": {
+            "West": 5
+        }
+    }
+]
