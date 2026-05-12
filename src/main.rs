@@ -19,6 +19,13 @@ enum AppError {
 async fn main() -> Result<(), AppError> {
     tracing_subscriber::fmt::init();
 
+    let database_url = std::env::var("DATABASE_URL").map_err(|_| {
+        tracing::error!("DATABASE_URL not set");
+        AppError::InitialisationError
+    })?;
+
+    tracing::info!("Connecting to database at {database_url}");
+
     let data_path = std::env::var("MUD_DATA_DIR").map_err(|e| {
        tracing::error!("Error reading MUD_DATA_DIR environment variable: {e}");
        AppError::InitialisationError 

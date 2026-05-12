@@ -1,5 +1,29 @@
 services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: fourthage
+      POSTGRES_USER: mud
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mud -d fourthage"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   server:
     build: .
+    environment:
+      DATABASE_URL: postgres://mud:${POSTGRES_PASSWORD}@db:5432/fourthage
     ports:
       - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
