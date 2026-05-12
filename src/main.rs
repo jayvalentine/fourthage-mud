@@ -7,6 +7,7 @@ mod model;
 mod command;
 mod session;
 mod data;
+mod db;
 
 use model::world::World;
 
@@ -59,13 +60,14 @@ async fn main() -> Result<(), AppError> {
             Ok((mut socket, addr)) => {
                 tracing::info!("Handling connection from {addr}");
                 let world = world.clone();
+                let pool = pool.clone();
 
                 tokio::spawn(async move {
                     let (reader, mut writer) = socket.split();
                     let mut reader = BufReader::new(reader);
 
-                    session::run(&mut writer, &mut reader, world).await.unwrap_or_else(|e| {
-                        tracing::error!("Error during session from {addr}: {e}");
+                    session::run(pool, &mut writer, &mut reader, world).await.unwrap_or_else(|e| {
+                        tracing::error!("Error during session from {addr}: {e:?}");
                     });
 
                     tracing::info!("Connection from {addr} closed");

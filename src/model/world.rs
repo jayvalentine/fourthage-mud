@@ -2,10 +2,10 @@ use std::{collections::HashMap, fmt};
 use serde::Deserialize;
 
 #[derive(Clone, Hash, PartialEq, Eq, Deserialize, Debug)]
-pub struct RoomId(u32);
+pub struct RoomId(i32);
 
 impl RoomId {
-    pub fn new(id: u32) -> RoomId {
+    pub fn new(id: i32) -> RoomId {
         RoomId(id)
     }
 }

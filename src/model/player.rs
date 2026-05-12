@@ -6,8 +6,8 @@ pub struct Player {
 }
 
 impl Player {
-    pub fn new(starting_room: RoomId) -> Player {
-        Player { name: "Player".into(), current_room: starting_room }
+    pub fn new(name: String, starting_room: RoomId) -> Player {
+        Player { name, current_room: starting_room }
     }
 
     pub fn name(&self) -> &str {
