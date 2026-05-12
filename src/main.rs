@@ -25,6 +25,16 @@ async fn main() -> Result<(), AppError> {
     })?;
 
     tracing::info!("Connecting to database at {database_url}");
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&database_url).await.map_err(|e| {
+            tracing::error!("Failed to connect to database: {e}");
+            AppError::InitialisationError
+        })?;
+    sqlx::migrate!().run(&pool).await.map_err(|e| {
+        tracing::error!("Failed to run database migrations: {e}");
+        AppError::InitialisationError
+    })?;
 
     let data_path = std::env::var("MUD_DATA_DIR").map_err(|e| {
        tracing::error!("Error reading MUD_DATA_DIR environment variable: {e}");
