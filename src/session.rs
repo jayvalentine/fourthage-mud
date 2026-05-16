@@ -7,7 +7,7 @@ use tokio::io::{AsyncWriteExt, AsyncBufReadExt, BufReader};
 use crate::command::{Command, CommandParseError, CommandExecutionError, handle_go, handle_look};
 use crate::model::player::Player;
 use crate::model::world::{World, RoomId};
-use crate::db;
+use crate::db::{self, AccountRow};
 
 #[derive(Debug)]
 pub enum SessionError {
@@ -34,22 +34,22 @@ async fn recv(reader: &mut BufReader<ReadHalf<'_>>) -> Result<Option<String>, Se
     }
 }
 
-/// Login the player with the given username.
-async fn login(pool: &PgPool, username: &str) -> Result<Player, SessionError> {
-    let account = db::get_account(pool, username)
+/// Get an existing player if one exists with the given username.
+/// Returns None if no named player exists.
+async fn get_account(pool: &PgPool, username: &str) -> Result<Option<AccountRow>, SessionError> {
+    db::get_account(pool, username)
         .await
-        .map_err(|_| SessionError::Login(format!("Error retrieving player '{username}' from database")))?;
+        .map_err(|_| SessionError::Login(format!("Error retrieving account '{username}' from database")))
+}
 
-    let account = match account {
-        Some(a) => a,
-        None => {
-            db::create_account(pool, username)
-                .await
-                .map_err(|_| SessionError::Login(format!("Error creating player '{username}'")))?
-        }
-    };
+fn verify_account_password(account: &AccountRow, password: &str) -> bool {
+    true
+}
 
-    Ok(Player::new(account.username, RoomId::new(account.current_room_id)))
+async fn create_account(pool: &PgPool, username: &str, password: &str) -> Result<AccountRow, SessionError> {
+    db::create_account(pool, username)
+        .await
+        .map_err(|_| SessionError::Login(format!("Error creating account '{username}' from database")))
 }
 
 /// Welcome the given player to the game.
@@ -66,13 +66,35 @@ pub async fn run(pool: PgPool, writer: &mut WriteHalf<'_>, reader: &mut BufReade
         None => return Ok(())
     };
 
-    let mut player = match login(&pool, &username).await {
-        Ok(p) => p,
-        Err(e) => {
-            send(writer, "An error occurred during login.").await?;
-            return Err(e);
+    let account = get_account(&pool, &username).await?;
+    let account = match account {
+        Some(a) => {
+            // Account exists; verify password.
+            send(writer, "Enter your password:").await?;
+            let password = match recv(reader).await? {
+                Some(s) => s,
+                None => return Ok(())
+            };
+            if verify_account_password(&a, &password) {
+                a
+            }
+            else {
+                send(writer, "Incorrect password.").await?;
+                return Ok(())
+            }
+        },
+        None => {
+            // Account does not exist; create it.
+            send(writer, "New account; enter your password:").await?;
+            let password = match recv(reader).await? {
+                Some(s) => s,
+                None => return Ok(())
+            };
+            create_account(&pool, &username, &password).await?
         }
     };
+
+    let mut player = Player::new(account.username, RoomId::new(account.current_room_id));
 
     welcome(writer, &player).await?;
 
