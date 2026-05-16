@@ -35,6 +35,11 @@ impl From<PasswordError> for SessionError {
     }
 }
 
+pub struct SessionContext {
+    pub world: Arc<World>,
+    pub pool: PgPool
+}
+
 /// Send a line of text to the client.
 async fn send(writer: &mut WriteHalf<'_>, s: &str) -> Result<(), SessionError> {
     writer.write_all(format!("{s}\n").as_bytes()).await.map_err(|_| SessionError::Send)
@@ -126,6 +131,8 @@ async fn run_internal(pool: PgPool, writer: &mut WriteHalf<'_>, reader: &mut Buf
 
     let name = player.name().to_owned();
 
+    let mut context = SessionContext { world, pool };
+
     loop {
         let response = match recv(reader).await? {
             None => {
@@ -136,8 +143,8 @@ async fn run_internal(pool: PgPool, writer: &mut WriteHalf<'_>, reader: &mut Buf
                 match Command::parse(&input) {
                     Ok(command) => {
                         let result = match command {
-                            Command::Go(direction) => handle_go(&world, &mut player, direction),
-                            Command::Look => handle_look(&world, &mut player),
+                            Command::Go(direction) => handle_go(&mut context, &mut player, direction).await,
+                            Command::Look => handle_look(&context, &mut player),
                             Command::Quit => {
                                 let name = player.name();
                                 tracing::info!("Player '{name}' quit");

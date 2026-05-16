@@ -4,6 +4,12 @@ pub enum DatabaseError {
     SqlxError(sqlx::Error)
 }
 
+impl From<sqlx::Error> for DatabaseError {
+    fn from(value: sqlx::Error) -> Self {
+        DatabaseError::SqlxError(value)
+    }
+}
+
 pub struct AccountRow {
     pub username: String,
     pub password_hash: String,
@@ -14,7 +20,7 @@ pub async fn get_account(pool: &PgPool, username: &str) -> Result<Option<Account
     let account = sqlx::query!(
         "SELECT id, username, password_hash, current_room_id FROM accounts WHERE username = $1",
         username
-    ).fetch_optional(pool).await.map_err(|e| DatabaseError::SqlxError(e))?;
+    ).fetch_optional(pool).await?;
 
     match account {
         Some(row) => Ok(Some(AccountRow { username: row.username, password_hash: row.password_hash, current_room_id: row.current_room_id })),
@@ -28,7 +34,16 @@ pub async fn create_account(pool: &PgPool, username: &str, password_hash: &str) 
          RETURNING id, username, password_hash, current_room_id",
         username,
         password_hash
-    ).fetch_one(pool).await.map_err(|e| DatabaseError::SqlxError(e))?;
+    ).fetch_one(pool).await?;
 
     Ok(AccountRow { username: row.username, password_hash: row.password_hash, current_room_id: row.current_room_id })
+}
+
+pub async fn update_room_id(pool: &PgPool, username: &str, room_id: i32) -> Result<(), DatabaseError> {
+    sqlx::query!(
+        "UPDATE accounts SET current_room_id = $1 WHERE username = $2",
+        room_id,
+        username
+    ).execute(pool).await?;
+    Ok(())
 }

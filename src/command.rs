@@ -1,4 +1,4 @@
-use crate::model::{player::Player, world::{Direction, World}};
+use crate::{db, model::{player::Player, world::Direction}, session::SessionContext};
 
 pub enum Command {
     Go(Direction),
@@ -56,22 +56,24 @@ impl Command {
 }
 
 /// Handle 'go <direction>'
-pub fn handle_go(world: &World, player: &mut Player, direction: Direction) -> Result<String, CommandExecutionError> {
-    let current_room = world.get_room(player.current_room())
+pub async fn handle_go(context: &mut SessionContext, player: &mut Player, direction: Direction) -> Result<String, CommandExecutionError> {
+    let current_room = context.world.get_room(player.current_room())
         .ok_or(CommandExecutionError::Unrecoverable("Could not retrieve room based on current room ID".into()))?;
 
     let destination_room_id = current_room.get_destination(direction)
         .ok_or(CommandExecutionError::InvalidCommand(format!("You cannot go {direction} from here.")))?;
 
     player.move_to(destination_room_id);
+    db::update_room_id(&context.pool, player.name(), destination_room_id.value())
+        .await.map_err(|_| CommandExecutionError::Unrecoverable("Failed to update room ID in database".into()))?;
 
-    let description = handle_look(world, player)?;
+    let description = handle_look(context, player)?;
 
     Ok(format!("You go {direction}.\n\n{description}"))
 }
 
-pub fn handle_look(world: &World, player: &Player) -> Result<String, CommandExecutionError> {
-    let current_room = world.get_room(player.current_room())
+pub fn handle_look(context: &SessionContext, player: &Player) -> Result<String, CommandExecutionError> {
+    let current_room = context.world.get_room(player.current_room())
         .ok_or(CommandExecutionError::Unrecoverable("Could not retrieve room based on current room ID".into()))?;
 
     let room_name = current_room.name();

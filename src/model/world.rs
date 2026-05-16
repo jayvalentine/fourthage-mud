@@ -8,6 +8,10 @@ impl RoomId {
     pub fn new(id: i32) -> RoomId {
         RoomId(id)
     }
+
+    pub fn value(&self) -> i32 {
+        self.0
+    }
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq, Deserialize, Debug)]
