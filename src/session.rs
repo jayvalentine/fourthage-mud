@@ -6,7 +6,7 @@ use tokio::io::{AsyncWriteExt, AsyncBufReadExt, BufReader};
 
 use crate::command::{Command, CommandParseError, CommandExecutionError, handle_go, handle_look};
 use crate::model::player::Player;
-use crate::model::world::{World};
+use crate::model::world::{World, RoomId};
 use crate::db;
 
 #[derive(Debug)]
@@ -36,14 +36,20 @@ async fn recv(reader: &mut BufReader<ReadHalf<'_>>) -> Result<Option<String>, Se
 
 /// Login the player with the given username.
 async fn login(pool: &PgPool, username: &str) -> Result<Player, SessionError> {
-    let player = db::get_player(pool, username)
+    let account = db::get_account(pool, username)
         .await
         .map_err(|_| SessionError::Login(format!("Error retrieving player '{username}' from database")))?;
 
-    match player {
-        Some(p) => Ok(p),
-        None => db::create_player(pool, username).await.map_err(|_| SessionError::Login(format!("Error creating player '{username}'")))
-    }
+    let account = match account {
+        Some(a) => a,
+        None => {
+            db::create_account(pool, username)
+                .await
+                .map_err(|_| SessionError::Login(format!("Error creating player '{username}'")))?
+        }
+    };
+
+    Ok(Player::new(account.username, RoomId::new(account.current_room_id)))
 }
 
 /// Welcome the given player to the game.
