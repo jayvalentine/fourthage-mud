@@ -7,13 +7,22 @@ use tokio::io::{AsyncWriteExt, AsyncBufReadExt, BufReader};
 use crate::command::{Command, CommandParseError, CommandExecutionError, handle_go, handle_look};
 use crate::model::player::Player;
 use crate::model::world::{World, RoomId};
-use crate::db::{self, AccountRow};
+use crate::db::{self, AccountRow, DatabaseError};
 
 #[derive(Debug)]
 pub enum SessionError {
     Login(String),
+    Internal(String),
     Send,
     Recv
+}
+
+impl From<DatabaseError> for SessionError {
+    fn from(e: DatabaseError) -> SessionError {
+        match e {
+            DatabaseError::SqlxError(e) => SessionError::Internal(format!("Database error: {e}"))
+        }
+    }
 }
 
 /// Send a line of text to the client.
@@ -34,22 +43,8 @@ async fn recv(reader: &mut BufReader<ReadHalf<'_>>) -> Result<Option<String>, Se
     }
 }
 
-/// Get an existing player if one exists with the given username.
-/// Returns None if no named player exists.
-async fn get_account(pool: &PgPool, username: &str) -> Result<Option<AccountRow>, SessionError> {
-    db::get_account(pool, username)
-        .await
-        .map_err(|_| SessionError::Login(format!("Error retrieving account '{username}' from database")))
-}
-
 fn verify_account_password(account: &AccountRow, password: &str) -> bool {
     true
-}
-
-async fn create_account(pool: &PgPool, username: &str, password: &str) -> Result<AccountRow, SessionError> {
-    db::create_account(pool, username)
-        .await
-        .map_err(|_| SessionError::Login(format!("Error creating account '{username}' from database")))
 }
 
 /// Welcome the given player to the game.
@@ -59,14 +54,14 @@ async fn welcome(writer: &mut WriteHalf<'_>, player: &Player) -> Result<(), Sess
 }
 
 /// Execute the game loop for the given session.
-pub async fn run(pool: PgPool, writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHalf<'_>>, world: Arc<World>) -> Result<(), SessionError> {
+async fn run_internal(pool: PgPool, writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHalf<'_>>, world: Arc<World>) -> Result<(), SessionError> {
     send(writer, "Enter your username:").await?;
     let username = match recv(reader).await? {
         Some(s) => s,
         None => return Ok(())
     };
 
-    let account = get_account(&pool, &username).await?;
+    let account = db::get_account(&pool, &username).await?;
     let account = match account {
         Some(a) => {
             // Account exists; verify password.
@@ -90,7 +85,7 @@ pub async fn run(pool: PgPool, writer: &mut WriteHalf<'_>, reader: &mut BufReade
                 Some(s) => s,
                 None => return Ok(())
             };
-            create_account(&pool, &username, &password).await?
+            db::create_account(&pool, &username, &password).await?
         }
     };
 
@@ -139,4 +134,29 @@ pub async fn run(pool: PgPool, writer: &mut WriteHalf<'_>, reader: &mut BufReade
     }
 
     Ok(())
+}
+
+pub async fn run(pool: PgPool, writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHalf<'_>>, world: Arc<World>) -> Result<(), SessionError> {
+    let result = run_internal(pool, writer, reader, world).await;
+    match &result {
+        Ok(()) => (),
+        Err(e) => {
+            let response = match e {
+                SessionError::Login(s) => Some(format!("Error occurred during login: {s}")),
+                SessionError::Internal(_) => Some("An internal error occurred.".into()),
+
+                // If a send/receive error has occurred there is no point trying to use the connection again.
+                SessionError::Recv => None,
+                SessionError::Send => None
+            };
+
+            // We don't really care at this point if there is an error sending the session response.
+            // The session is already unrecoverable.
+            match response {
+                Some(s) => { let _ = send(writer, &s).await; },
+                None => ()
+            };
+        }
+    }
+    result
 }
