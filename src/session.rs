@@ -53,6 +53,31 @@ async fn recv(reader: &mut BufReader<ReadHalf<'_>>) -> Result<Option<String>, Se
     }
 }
 
+/// Get the initial password from the player (on account creation).
+/// Prompts the user to confirm the password and only exits once a valid confirmation is made.
+async fn get_initial_password(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHalf<'_>>) -> Result<Option<String>, SessionError> {
+    loop {
+        send(writer, "New account; enter your password:").await?;
+        let initial_password = match recv(reader).await? {
+            Some(s) => s,
+            None => return Ok(None)
+        };
+
+        send(writer, "Confirm your password:").await?;
+        let confirmation = match recv(reader).await? {
+            Some(s) => s,
+            None => return Ok(None)
+        };
+
+        if initial_password == confirmation {
+            return Ok(Some(initial_password))
+        }
+        else {
+            send(writer, "Passwords do not match.").await?;
+        }
+    }
+}
+
 /// Welcome the given player to the game.
 async fn welcome(writer: &mut WriteHalf<'_>, player: &Player) -> Result<(), SessionError> {
     let name = player.name();
@@ -86,8 +111,7 @@ async fn run_internal(pool: PgPool, writer: &mut WriteHalf<'_>, reader: &mut Buf
         },
         None => {
             // Account does not exist; create it.
-            send(writer, "New account; enter your password:").await?;
-            let password = match recv(reader).await? {
+            let password = match get_initial_password(writer, reader).await? {
                 Some(s) => s,
                 None => return Ok(())
             };
