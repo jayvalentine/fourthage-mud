@@ -29,7 +29,8 @@ impl From<DatabaseError> for SessionError {
 impl From<PasswordError> for SessionError {
     fn from(e: PasswordError) -> SessionError {
         match e {
-            _ => SessionError::Login,
+            PasswordError::CouldNotHash => SessionError::Login,
+            PasswordError::InvalidHash => SessionError::Internal("Malformed hash in database".into())
         }
     }
 }
