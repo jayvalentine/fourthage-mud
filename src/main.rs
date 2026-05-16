@@ -8,6 +8,7 @@ mod command;
 mod session;
 mod data;
 mod db;
+mod password;
 
 use model::world::World;
 

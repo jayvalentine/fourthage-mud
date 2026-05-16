@@ -7,11 +7,12 @@ use tokio::io::{AsyncWriteExt, AsyncBufReadExt, BufReader};
 use crate::command::{Command, CommandParseError, CommandExecutionError, handle_go, handle_look};
 use crate::model::player::Player;
 use crate::model::world::{World, RoomId};
-use crate::db::{self, AccountRow, DatabaseError};
+use crate::db::{self, DatabaseError};
+use crate::password::{self, PasswordError};
 
 #[derive(Debug)]
 pub enum SessionError {
-    Login(String),
+    Login,
     Internal(String),
     Send,
     Recv
@@ -21,6 +22,14 @@ impl From<DatabaseError> for SessionError {
     fn from(e: DatabaseError) -> SessionError {
         match e {
             DatabaseError::SqlxError(e) => SessionError::Internal(format!("Database error: {e}"))
+        }
+    }
+}
+
+impl From<PasswordError> for SessionError {
+    fn from(e: PasswordError) -> SessionError {
+        match e {
+            _ => SessionError::Login,
         }
     }
 }
@@ -41,10 +50,6 @@ async fn recv(reader: &mut BufReader<ReadHalf<'_>>) -> Result<Option<String>, Se
         Ok(_) => Ok(Some(line.trim().into())),
         Err(_) => Err(SessionError::Recv)
     }
-}
-
-fn verify_account_password(account: &AccountRow, password: &str) -> bool {
-    true
 }
 
 /// Welcome the given player to the game.
@@ -70,7 +75,7 @@ async fn run_internal(pool: PgPool, writer: &mut WriteHalf<'_>, reader: &mut Buf
                 Some(s) => s,
                 None => return Ok(())
             };
-            if verify_account_password(&a, &password) {
+            if password::verify_password(&password, &a.password_hash)? {
                 a
             }
             else {
@@ -85,7 +90,8 @@ async fn run_internal(pool: PgPool, writer: &mut WriteHalf<'_>, reader: &mut Buf
                 Some(s) => s,
                 None => return Ok(())
             };
-            db::create_account(&pool, &username, &password).await?
+            let password_hash = password::hash_password(&password)?;
+            db::create_account(&pool, &username, &password_hash).await?
         }
     };
 
@@ -142,8 +148,8 @@ pub async fn run(pool: PgPool, writer: &mut WriteHalf<'_>, reader: &mut BufReade
         Ok(()) => (),
         Err(e) => {
             let response = match e {
-                SessionError::Login(s) => Some(format!("Error occurred during login: {s}")),
-                SessionError::Internal(_) => Some("An internal error occurred.".into()),
+                SessionError::Login => Some("An error occurred during login.".to_string()),
+                SessionError::Internal(_) => Some("An internal error occurred.".to_string()),
 
                 // If a send/receive error has occurred there is no point trying to use the connection again.
                 SessionError::Recv => None,
