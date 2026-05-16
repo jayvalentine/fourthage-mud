@@ -143,7 +143,7 @@ async fn run_internal(pool: PgPool, writer: &mut WriteHalf<'_>, reader: &mut Buf
                 match Command::parse(&input) {
                     Ok(command) => {
                         let result = match command {
-                            Command::Go(direction) => handle_go(&mut context, &mut player, direction),
+                            Command::Go(direction) => handle_go(&mut context, &mut player, direction).await,
                             Command::Look => handle_look(&context, &mut player),
                             Command::Quit => {
                                 let name = player.name();
