@@ -138,7 +138,7 @@ fn handle_say(context: &SessionContext, sentence: &str) -> Result<CommandResult,
                 event: GameEvent::Message(message)
             }
         ],
-        response: None
+        response: Some(format!("You say: {sentence}"))
     };
     Ok(CommandResult::Action(result))
 }
