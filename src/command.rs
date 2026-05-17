@@ -1,4 +1,4 @@
-use crate::{db, event::{Event, EventTarget, GameEvent}, model::world::{Direction, RoomId}, session::SessionContext};
+use crate::{db, entities::{EntityId, EntityRegistryError, Name, Position}, event::{Event, EventTarget, GameEvent}, model::world::{Direction, RoomId}, session::SessionContext};
 
 pub enum Command {
     Go(Direction),
@@ -46,6 +46,14 @@ pub enum CommandResult {
 pub enum CommandExecutionError {
     /// Command could not be executed due to an unrecoverable error.
     Unrecoverable(String)
+}
+
+impl From<EntityRegistryError> for CommandExecutionError {
+    fn from(value: EntityRegistryError) -> Self {
+        match value {
+            _ => CommandExecutionError::Unrecoverable("Entity registry error".into())
+        }
+    }
 }
 
 impl Command {
@@ -106,8 +114,9 @@ fn get_room_description(context: &SessionContext, id: &RoomId) -> Result<String,
 }
 
 async fn handle_go(context: &mut SessionContext, direction: Direction) -> Result<CommandResult, CommandExecutionError> {
-    let position = context.entities.get_position(&context.player_name)
-        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {}", &context.player_name)))?;
+    let position = context.entities.get_component::<Position>(&context.player_id)
+        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {:?}", &context.player_id)))?
+        .ok_or(CommandExecutionError::Unrecoverable(format!("Entity {:?} has no position component", &context.player_id)))?;
     let current_room = context.world.get_room(&position.room)
         .ok_or(CommandExecutionError::Unrecoverable("Could not retrieve room based on current room ID".into()))?;
 
@@ -116,9 +125,14 @@ async fn handle_go(context: &mut SessionContext, direction: Direction) -> Result
         None => return Ok(CommandResult::Query(QueryResult { response: format!("You cannot go {direction} from here.") }))
     };
 
-    context.entities.update_position(&context.player_name, destination_room_id.clone())
-        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not update position of entity '{}'", &context.player_name)))?;
-    db::update_room_id(&context.pool, &context.player_name, destination_room_id.value())
+    context.entities.update_component(&context.player_id, Position { room: destination_room_id.clone() })
+        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not update position of entity '{:?}'", &context.player_id)))?;
+
+    let name = context.entities.get_component::<Name>(&context.player_id)
+        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get name for entity: {:?}", context.player_id)))?
+        .ok_or(CommandExecutionError::Unrecoverable(format!("Entity {:?} had no Name component", context.player_id)))?;
+    // TODO: Make the database interaction better
+    db::update_room_id(&context.pool, &name.value, destination_room_id.value())
         .await.map_err(|_| CommandExecutionError::Unrecoverable("Failed to update room ID in database".into()))?;
 
     let description = get_room_description(context, destination_room_id)?;
@@ -129,14 +143,17 @@ async fn handle_go(context: &mut SessionContext, direction: Direction) -> Result
 }
 
 fn handle_say(context: &SessionContext, sentence: &str) -> Result<CommandResult, CommandExecutionError> {
-    let name = &context.player_name;
-    let position = context.entities.get_position(&context.player_name)
-        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {}", &context.player_name)))?;
+    let name = context.entities.get_component::<Name>(&context.player_id)
+        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get name for entity: {:?}", context.player_id)))?
+        .ok_or(CommandExecutionError::Unrecoverable(format!("Entity {:?} had no Name component", context.player_id)))?;
+    let position = context.entities.get_component::<Position>(&context.player_id)
+        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {:?}", &context.player_id)))?
+        .ok_or(CommandExecutionError::Unrecoverable(format!("Entity {:?} has no position component", &context.player_id)))?;
     let message = format!("{name} says: {sentence}");
     let result = ActionResult {
         events: vec![
             Event {
-                target: EventTarget::RoomExcept(position.room, name.clone()),
+                target: EventTarget::RoomExcept(position.room, context.player_id.clone()),
                 event: GameEvent::Message(message)
             }
         ],
@@ -149,25 +166,30 @@ fn handle_who(context: &SessionContext) -> Result<CommandResult, CommandExecutio
     let online = context.entities.online_players()
         .map_err(|_| CommandExecutionError::Unrecoverable("Could not get online player list".into()))?;
 
-    let mut online: Vec<String> = online.iter()
-        .filter(|p| **p != context.player_name)
-        .map(|s| format!("    {s}"))
-        .collect();
-    online.sort();
+    let online: Vec<&EntityId> = online.iter()
+        .filter(|p| **p != context.player_id).collect();
 
-    let response = if online.is_empty() {
+    let mut strings: Vec<String> = Vec::new();
+    for e in online {
+        let name: Name = context.entities.get_component(e)?.unwrap();
+        strings.push(name.to_string());
+    }
+    strings.sort();
+
+    let response = if strings.is_empty() {
         "No other players online.".to_string()
     } else {
-        let online = online.join("\n");
-        format!("Online:\n{online}")
+        let list = strings.join("\n");
+        format!("Online:\n{list}")
     };
 
     Ok(CommandResult::Query(QueryResult { response }))
 }
 
 fn handle_look(context: &SessionContext) -> Result<CommandResult, CommandExecutionError> {
-    let position = context.entities.get_position(&context.player_name)
-        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {}", &context.player_name)))?;
+    let position = context.entities.get_component::<Position>(&context.player_id)
+        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {:?}", &context.player_id)))?
+        .ok_or(CommandExecutionError::Unrecoverable(format!("Entity {:?} has no position component", &context.player_id)))?;;
     let response = get_room_description(context, &position.room)?;
     Ok(CommandResult::Query(QueryResult { response }))
 }
@@ -179,11 +201,13 @@ pub async fn handle_command(context: &mut SessionContext, command: Command) -> R
         Command::Who => handle_who(context),
         Command::Look => handle_look(context),
         Command::Quit => {
-            let name = &context.player_name;
-            tracing::info!("Player '{name}' quit");
+            let name = context.entities.get_component::<Name>(&context.player_id)
+                .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get name for entity: {:?}", context.player_id)))?
+                .ok_or(CommandExecutionError::Unrecoverable(format!("Entity {:?} had no Name component", context.player_id)))?;
+            tracing::info!("Player '{:?}' quit", context.player_id);
             let quit_event = Event {
                 event: GameEvent::SessionEnded,
-                target: EventTarget::Player(name.into())
+                target: EventTarget::Entity(context.player_id.clone())
             };
             let result = ActionResult {
                 events: vec![quit_event],
