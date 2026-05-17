@@ -125,7 +125,7 @@ async fn welcome(writer: &mut WriteHalf<'_>, player: &Player) -> Result<(), Sess
 }
 
 async fn handle_input(session_context: &mut SessionContext, input: &str) -> Result<Option<String>, SessionError> {
-    let response = match Command::parse(&input) {
+    let response = match Command::parse(input) {
         Ok(command) => {
             let result = handle_command(session_context, command).await?;
 
@@ -196,9 +196,8 @@ async fn run_internal(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHal
                 match line {
                     Ok(Some(input)) => {
                         let response = handle_input(&mut session_context, &input).await?;
-                        match response {
-                            Some(s) => send(writer, &s).await?,
-                            None => ()
+                        if let Some(s) = response {
+                            send(writer, &s).await?;
                         }
                     },
                     Ok(None) => {
