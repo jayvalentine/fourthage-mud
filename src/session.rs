@@ -83,6 +83,7 @@ impl SessionContext {
 impl Drop for SessionContext {
     fn drop(&mut self) {
         let _ = self.event_bus.unregister(&self.player_name);
+        let _ = self.entities.despawn(&self.player_name);
     }
 }
 

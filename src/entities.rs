@@ -32,6 +32,11 @@ impl EntityRegistry {
         Ok(())
     }
 
+    pub fn despawn(&self, name: &str) -> Result<(), EntityRegistryError> {
+        self.positions.lock()?.remove(name);
+        Ok(())
+    }
+
     pub fn update_position(&self, name: &str, new_position: RoomId) -> Result<(), EntityRegistryError> {
         let mut positions = self.positions.lock()?;
         let position = positions.get_mut(name).ok_or(EntityRegistryError::UnknownEntity(name.into()))?;
