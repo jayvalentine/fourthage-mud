@@ -105,7 +105,7 @@ fn get_room_description(context: &SessionContext, id: &RoomId) -> Result<String,
 
 async fn handle_go(context: &mut SessionContext, direction: Direction) -> Result<CommandResult, CommandExecutionError> {
     let position = context.entities.get_position(&context.player_name)
-        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {0}", &context.player_name)))?;
+        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {}", &context.player_name)))?;
     let current_room = context.world.get_room(&position.room)
         .ok_or(CommandExecutionError::Unrecoverable("Could not retrieve room based on current room ID".into()))?;
 
@@ -115,7 +115,7 @@ async fn handle_go(context: &mut SessionContext, direction: Direction) -> Result
     };
 
     context.entities.update_position(&context.player_name, destination_room_id.clone())
-        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not update position of entity '{0}'", &context.player_name)))?;
+        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not update position of entity '{}'", &context.player_name)))?;
     db::update_room_id(&context.pool, &context.player_name, destination_room_id.value())
         .await.map_err(|_| CommandExecutionError::Unrecoverable("Failed to update room ID in database".into()))?;
 
@@ -129,7 +129,7 @@ async fn handle_go(context: &mut SessionContext, direction: Direction) -> Result
 fn handle_say(context: &SessionContext, sentence: &str) -> Result<CommandResult, CommandExecutionError> {
     let name = &context.player_name;
     let position = context.entities.get_position(&context.player_name)
-        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {0}", &context.player_name)))?;
+        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {}", &context.player_name)))?;
     let message = format!("{name} says: {sentence}");
     let result = ActionResult {
         events: vec![
@@ -145,7 +145,7 @@ fn handle_say(context: &SessionContext, sentence: &str) -> Result<CommandResult,
 
 fn handle_look(context: &SessionContext) -> Result<CommandResult, CommandExecutionError> {
     let position = context.entities.get_position(&context.player_name)
-        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {0}", &context.player_name)))?;
+        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {}", &context.player_name)))?;
     let response = get_room_description(context, &position.room)?;
     Ok(CommandResult::Query(QueryResult { response }))
 }

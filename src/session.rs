@@ -210,7 +210,7 @@ async fn run_internal(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHal
                         }
                     },
                     Ok(None) => {
-                        tracing::info!("Player '{0}' disconnected", &session_context.player_name);
+                        tracing::info!("Player '{}' disconnected", &session_context.player_name);
                         break;
                     },
                     Err(e) => return Err(e)
