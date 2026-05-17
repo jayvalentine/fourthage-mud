@@ -6,8 +6,8 @@ use tokio::io::{AsyncWriteExt, AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc;
 
 use crate::command::{Command, CommandExecutionError, CommandParseError, CommandResult, handle_command};
-use crate::event::{EventBus, EventBusError, GameEvent};
-use crate::model::player::Player;
+use crate::entities::{EntityRegistry, EntityRegistryError};
+use crate::event::{EventBus, EventBusError, EventTargetResolver, GameEvent};
 use crate::model::world::{World, RoomId};
 use crate::db::{self, DatabaseError};
 use crate::password::{self, PasswordError};
@@ -54,24 +54,37 @@ impl From<EventBusError> for SessionError {
     }
 }
 
+impl From<EntityRegistryError> for SessionError {
+    fn from(value: EntityRegistryError) -> Self {
+        match value {
+            EntityRegistryError::InvalidMutex => SessionError::Internal("Entity registry holds invalid mutex".into()),
+            EntityRegistryError::UnknownEntity(name) => SessionError::Internal(format!("Attempted to update property of unknown entity '{name}'")),
+            EntityRegistryError::DuplicateSpawn(_) => SessionError::Login
+        }
+    }
+}
+
 pub struct SessionContext {
+    pub player_name: String,
     pub world: Arc<World>,
     pub pool: PgPool,
     pub event_bus: Arc<EventBus>,
-    pub player: Player,
+    pub entities: Arc<EntityRegistry>,
     receiver: mpsc::Receiver<GameEvent>
 }
 
 impl SessionContext {
-    pub fn new(world: Arc<World>, pool: PgPool, event_bus: Arc<EventBus>, player: Player) -> Result<SessionContext, SessionError> {
-        let receiver = event_bus.register(player.name())?;
-        Ok(SessionContext { world, pool, event_bus, player, receiver })
+    pub fn new(username: String, room: RoomId, world: Arc<World>, pool: PgPool, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<SessionContext, SessionError> {
+        entities.spawn(username.clone(), room)?;
+        let receiver = event_bus.register(&username)?;
+        Ok(SessionContext { player_name: username, world, pool, event_bus, receiver, entities })
     }
 }
 
 impl Drop for SessionContext {
     fn drop(&mut self) {
-        let _ = self.event_bus.unregister(self.player.name());
+        let _ = self.event_bus.unregister(&self.player_name);
+        let _ = self.entities.despawn(&self.player_name);
     }
 }
 
@@ -119,8 +132,8 @@ async fn get_initial_password(writer: &mut WriteHalf<'_>, reader: &mut BufReader
 }
 
 /// Welcome the given player to the game.
-async fn welcome(writer: &mut WriteHalf<'_>, player: &Player) -> Result<(), SessionError> {
-    let name = player.name();
+async fn welcome(writer: &mut WriteHalf<'_>, context: &SessionContext) -> Result<(), SessionError> {
+    let name = &context.player_name;
     send(writer, &format!("Welcome {name}!")).await
 }
 
@@ -133,7 +146,8 @@ async fn handle_input(session_context: &mut SessionContext, input: &str) -> Resu
                 CommandResult::Query(q) => Some(q.response().into()),
                 CommandResult::Action(a) => {
                     for event in a.events() {
-                        session_context.event_bus.publish(event).await?;
+                        let targets = session_context.entities.resolve(&event.target)?;
+                        session_context.event_bus.publish(&event.event, &targets).await?;
                     }
                     a.response().clone()
                 }
@@ -147,7 +161,7 @@ async fn handle_input(session_context: &mut SessionContext, input: &str) -> Resu
 }
 
 /// Execute the game loop for the given session.
-async fn run_internal(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHalf<'_>>, pool: PgPool, world: Arc<World>, event_bus: Arc<EventBus>) -> Result<(), SessionError> {
+async fn run_internal(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHalf<'_>>, pool: PgPool, world: Arc<World>, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<(), SessionError> {
     send(writer, "Enter your username:").await?;
     let username = match recv(reader).await? {
         Some(s) => s,
@@ -182,13 +196,8 @@ async fn run_internal(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHal
         }
     };
 
-    let player = Player::new(account.username, RoomId::new(account.current_room_id));
-
-    let mut session_context = SessionContext::new(world, pool, event_bus, player)?;
-
-    welcome(writer, &session_context.player).await?;
-
-    let name = session_context.player.name().to_owned();
+    let mut session_context = SessionContext::new(account.username, RoomId::new(account.current_room_id), world, pool, event_bus, entities)?;
+    welcome(writer, &session_context).await?;
 
     loop {
         tokio::select! {
@@ -201,7 +210,7 @@ async fn run_internal(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHal
                         }
                     },
                     Ok(None) => {
-                        tracing::info!("Player '{name}' disconnected");
+                        tracing::info!("Player '{}' disconnected", &session_context.player_name);
                         break;
                     },
                     Err(e) => return Err(e)
@@ -226,8 +235,8 @@ async fn run_internal(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHal
     Ok(())
 }
 
-pub async fn run(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHalf<'_>>, pool: PgPool, world: Arc<World>, event_bus: Arc<EventBus>) -> Result<(), SessionError> {
-    let result = run_internal(writer, reader, pool, world, event_bus).await;
+pub async fn run(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHalf<'_>>, pool: PgPool, world: Arc<World>, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<(), SessionError> {
+    let result = run_internal(writer, reader, pool, world, event_bus, entities).await;
     match &result {
         Ok(()) => (),
         Err(e) => {

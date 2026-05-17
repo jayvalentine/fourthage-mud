@@ -2,8 +2,11 @@ use std::{collections::HashMap, sync::{Mutex, PoisonError}};
 
 use tokio::sync::mpsc::{self, error::SendError};
 
+use crate::model::world::RoomId;
+
 pub enum EventTarget {
-    Player(String)
+    Player(String),
+    RoomExcept(RoomId, String)
 }
 
 #[derive(Clone, Debug)]
@@ -34,6 +37,10 @@ impl From<SendError<GameEvent>> for EventBusError {
     }
 }
 
+pub trait EventTargetResolver<T> {
+    fn resolve(&self, target: &EventTarget) -> Result<Vec<String>, T>;
+}
+
 pub struct EventBus {
     subscribers: Mutex<HashMap<String, mpsc::Sender<GameEvent>>>
 }
@@ -59,27 +66,25 @@ impl EventBus {
         Ok(())
     }
 
-    fn resolve_targets(subscribers: &HashMap<String, mpsc::Sender<GameEvent>>, event_target: &EventTarget) -> Vec<mpsc::Sender<GameEvent>> {
-        let players = match event_target {
-            EventTarget::Player(name) => {
-                match subscribers.get(name) {
-                    Some(p) => vec![p.clone()],
-                    None => Vec::new()
-                }
+    fn resolve_targets(subscribers: &HashMap<String, mpsc::Sender<GameEvent>>, targets: &[String]) -> Vec<mpsc::Sender<GameEvent>> {
+        let mut senders = Vec::new();
+        for target in targets {
+            if let Some(t) = subscribers.get(target) {
+                senders.push(t.clone());
             }
         };
-        players
+        senders
     }
 
-    pub async fn publish(&self, event: &Event) -> Result<(), EventBusError> {
-        tracing::debug!("Publishing event: {0:?}", event.event);
+    pub async fn publish(&self, event: &GameEvent, targets: &[String]) -> Result<(), EventBusError> {
+        tracing::debug!("Publishing event: {0:?}", event);
         let senders: Vec<_> = {
             let subscribers = self.subscribers.lock()?;
-            Self::resolve_targets(&subscribers, &event.target)
+            Self::resolve_targets(&subscribers, targets)
         };
 
         for sender in senders {
-            sender.send(event.event.clone()).await?;
+            sender.send(event.clone()).await?;
         };
         Ok(())
     }

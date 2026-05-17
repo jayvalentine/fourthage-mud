@@ -1,7 +1,9 @@
-use crate::{db, event::{Event, EventTarget, GameEvent}, model::{player::Player, world::{Direction, RoomId}}, session::SessionContext};
+use crate::{db, event::{Event, EventTarget, GameEvent}, model::world::{Direction, RoomId}, session::SessionContext};
 
 pub enum Command {
     Go(Direction),
+    Say(String),
+    Who,
     Look,
     Quit
 }
@@ -59,13 +61,12 @@ impl Command {
 
     pub fn parse(input: &str) -> Result<Command, CommandParseError> {
         // split input into verb and optional argument
-        let mut parts = input.splitn(2, ' ');
+        let mut parts = input.split_whitespace();
         let verb = parts.next().unwrap_or("").to_lowercase();
-        let arg = parts.next();
 
         match verb.as_str() {
             "go" => {
-                let direction = match arg {
+                let direction = match parts.next() {
                     Some(s) => s,
                     None => return Err(CommandParseError::InvalidSyntax("Go where?".into()))
                 };
@@ -75,6 +76,15 @@ impl Command {
                 };
                 Ok(Command::Go(direction))
             },
+            "say" => {
+                let sentence = parts.collect::<Vec<&str>>().join(" ");
+                let sentence = sentence.trim();
+                match sentence {
+                    "" => Err(CommandParseError::InvalidSyntax("Say what?".into())),
+                    _ => Ok(Command::Say(sentence.into()))
+                }
+            },
+            "who" => Ok(Command::Who),
             "look" => Ok(Command::Look),
             "quit" => Ok(Command::Quit),
             _ => Err(CommandParseError::UnknownCommand(input.to_string())),
@@ -96,7 +106,9 @@ fn get_room_description(context: &SessionContext, id: &RoomId) -> Result<String,
 }
 
 async fn handle_go(context: &mut SessionContext, direction: Direction) -> Result<CommandResult, CommandExecutionError> {
-    let current_room = context.world.get_room(context.player.current_room())
+    let position = context.entities.get_position(&context.player_name)
+        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {}", &context.player_name)))?;
+    let current_room = context.world.get_room(&position.room)
         .ok_or(CommandExecutionError::Unrecoverable("Could not retrieve room based on current room ID".into()))?;
 
     let destination_room_id = match current_room.get_destination(direction) {
@@ -104,8 +116,9 @@ async fn handle_go(context: &mut SessionContext, direction: Direction) -> Result
         None => return Ok(CommandResult::Query(QueryResult { response: format!("You cannot go {direction} from here.") }))
     };
 
-    context.player.move_to(destination_room_id);
-    db::update_room_id(&context.pool, context.player.name(), destination_room_id.value())
+    context.entities.update_position(&context.player_name, destination_room_id.clone())
+        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not update position of entity '{}'", &context.player_name)))?;
+    db::update_room_id(&context.pool, &context.player_name, destination_room_id.value())
         .await.map_err(|_| CommandExecutionError::Unrecoverable("Failed to update room ID in database".into()))?;
 
     let description = get_room_description(context, destination_room_id)?;
@@ -115,17 +128,58 @@ async fn handle_go(context: &mut SessionContext, direction: Direction) -> Result
     Ok(CommandResult::Action(result))
 }
 
+fn handle_say(context: &SessionContext, sentence: &str) -> Result<CommandResult, CommandExecutionError> {
+    let name = &context.player_name;
+    let position = context.entities.get_position(&context.player_name)
+        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {}", &context.player_name)))?;
+    let message = format!("{name} says: {sentence}");
+    let result = ActionResult {
+        events: vec![
+            Event {
+                target: EventTarget::RoomExcept(position.room, name.clone()),
+                event: GameEvent::Message(message)
+            }
+        ],
+        response: Some(format!("You say: {sentence}"))
+    };
+    Ok(CommandResult::Action(result))
+}
+
+fn handle_who(context: &SessionContext) -> Result<CommandResult, CommandExecutionError> {
+    let online = context.entities.online_players()
+        .map_err(|_| CommandExecutionError::Unrecoverable("Could not get online player list".into()))?;
+
+    let mut online: Vec<String> = online.iter()
+        .filter(|p| **p != context.player_name)
+        .map(|s| format!("    {s}"))
+        .collect();
+    online.sort();
+
+    let response = if online.is_empty() {
+        "No other players online.".to_string()
+    } else {
+        let online = online.join("\n");
+        format!("Online:\n{online}")
+    };
+
+    Ok(CommandResult::Query(QueryResult { response }))
+}
+
 fn handle_look(context: &SessionContext) -> Result<CommandResult, CommandExecutionError> {
-    let response = get_room_description(context, context.player.current_room())?;
+    let position = context.entities.get_position(&context.player_name)
+        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {}", &context.player_name)))?;
+    let response = get_room_description(context, &position.room)?;
     Ok(CommandResult::Query(QueryResult { response }))
 }
 
 pub async fn handle_command(context: &mut SessionContext, command: Command) -> Result<CommandResult, CommandExecutionError> {
     match command {
         Command::Go(direction) => handle_go(context, direction).await,
+        Command::Say(sentence) => handle_say(context, &sentence),
+        Command::Who => handle_who(context),
         Command::Look => handle_look(context),
         Command::Quit => {
-            let name = context.player.name();
+            let name = &context.player_name;
             tracing::info!("Player '{name}' quit");
             let quit_event = Event {
                 event: GameEvent::SessionEnded,
