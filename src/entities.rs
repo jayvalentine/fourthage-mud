@@ -9,7 +9,8 @@ pub struct Position {
 
 pub enum EntityRegistryError {
     InvalidMutex,
-    UnknownEntity(String)
+    UnknownEntity(String),
+    DuplicateSpawn(String)
 }
 
 impl<T> From<PoisonError<T>> for EntityRegistryError {
@@ -28,7 +29,11 @@ impl EntityRegistry {
     }
 
     pub fn spawn(&self, name: String, starting_room: RoomId) -> Result<(), EntityRegistryError> {
-        self.positions.lock()?.insert(name, Position { room: starting_room });
+        let mut positions = self.positions.lock()?;
+        if positions.contains_key(&name) {
+            return Err(EntityRegistryError::DuplicateSpawn(name));
+        }
+        positions.insert(name, Position { room: starting_room });
         Ok(())
     }
 

@@ -58,7 +58,8 @@ impl From<EntityRegistryError> for SessionError {
     fn from(value: EntityRegistryError) -> Self {
         match value {
             EntityRegistryError::InvalidMutex => SessionError::Internal("Entity registry holds invalid mutex".into()),
-            EntityRegistryError::UnknownEntity(name) => SessionError::Internal(format!("Attempted to update property of unknown entity '{name}'"))
+            EntityRegistryError::UnknownEntity(name) => SessionError::Internal(format!("Attempted to update property of unknown entity '{name}'")),
+            EntityRegistryError::DuplicateSpawn(_) => SessionError::Login
         }
     }
 }
