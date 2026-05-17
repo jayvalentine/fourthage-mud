@@ -19,6 +19,7 @@ services:
     build: .
     environment:
       DATABASE_URL: postgres://mud:${POSTGRES_PASSWORD}@db:5432/fourthage
+      RUST_LOG: ${RUST_LOG}
     ports:
       - "8080:8080"
     depends_on:

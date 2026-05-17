@@ -9,8 +9,11 @@ mod session;
 mod data;
 mod db;
 mod password;
+mod event;
 
 use model::world::World;
+use event::EventBus;
+use session::SessionContext;
 
 #[derive(Debug)]
 enum AppError {
@@ -49,6 +52,7 @@ async fn main() -> Result<(), AppError> {
     })?;
 
     let world = Arc::new(World::new(rooms));
+    let event_bus = Arc::new(EventBus::new());
 
     let listener = TcpListener::bind("0.0.0.0:8080").await.map_err(|e| {
         tracing::error!("Error starting TCP listener: {e}");
@@ -62,12 +66,17 @@ async fn main() -> Result<(), AppError> {
                 tracing::info!("Handling connection from {addr}");
                 let world = world.clone();
                 let pool = pool.clone();
+                let event_bus = event_bus.clone();
+
+                let context = SessionContext {
+                    world, pool, event_bus
+                };
 
                 tokio::spawn(async move {
                     let (reader, mut writer) = socket.split();
                     let mut reader = BufReader::new(reader);
 
-                    session::run(pool, &mut writer, &mut reader, world).await.unwrap_or_else(|e| {
+                    session::run(&mut writer, &mut reader, context).await.unwrap_or_else(|e| {
                         tracing::error!("Error during session from {addr}: {e:?}");
                     });
 
