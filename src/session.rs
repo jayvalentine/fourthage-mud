@@ -3,8 +3,10 @@ use std::sync::Arc;
 use sqlx::PgPool;
 use tokio::net::{tcp::WriteHalf, tcp::ReadHalf};
 use tokio::io::{AsyncWriteExt, AsyncBufReadExt, BufReader};
+use tokio::sync::mpsc;
 
-use crate::command::{Command, CommandParseError, CommandExecutionError, handle_go, handle_look};
+use crate::command::{Command, CommandExecutionError, CommandParseError, CommandResult, handle_command};
+use crate::event::{EventBus, EventBusError, GameEvent};
 use crate::model::player::Player;
 use crate::model::world::{World, RoomId};
 use crate::db::{self, DatabaseError};
@@ -35,9 +37,42 @@ impl From<PasswordError> for SessionError {
     }
 }
 
+impl From<CommandExecutionError> for SessionError {
+    fn from(value: CommandExecutionError) -> Self {
+        match value {
+            CommandExecutionError::Unrecoverable(s) => SessionError::Internal(s)
+        }
+    }
+}
+
+impl From<EventBusError> for SessionError {
+    fn from(value: EventBusError) -> Self {
+        match value {
+            EventBusError::InvalidMutex => SessionError::Internal("Event bus holds invalid mutex".into()),
+            EventBusError::CouldNotSend => SessionError::Internal("Event bus failed to send".into())
+        }
+    }
+}
+
 pub struct SessionContext {
     pub world: Arc<World>,
-    pub pool: PgPool
+    pub pool: PgPool,
+    pub event_bus: Arc<EventBus>,
+    pub player: Player,
+    receiver: mpsc::Receiver<GameEvent>
+}
+
+impl SessionContext {
+    pub fn new(world: Arc<World>, pool: PgPool, event_bus: Arc<EventBus>, player: Player) -> Result<SessionContext, SessionError> {
+        let receiver = event_bus.register(player.name())?;
+        Ok(SessionContext { world, pool, event_bus, player, receiver })
+    }
+}
+
+impl Drop for SessionContext {
+    fn drop(&mut self) {
+        let _ = self.event_bus.unregister(self.player.name());
+    }
 }
 
 /// Send a line of text to the client.
@@ -89,8 +124,30 @@ async fn welcome(writer: &mut WriteHalf<'_>, player: &Player) -> Result<(), Sess
     send(writer, &format!("Welcome {name}!")).await
 }
 
+async fn handle_input(session_context: &mut SessionContext, input: &str) -> Result<Option<String>, SessionError> {
+    let response = match Command::parse(input) {
+        Ok(command) => {
+            let result = handle_command(session_context, command).await?;
+
+            match result {
+                CommandResult::Query(q) => Some(q.response().into()),
+                CommandResult::Action(a) => {
+                    for event in a.events() {
+                        session_context.event_bus.publish(event).await?;
+                    }
+                    a.response().clone()
+                }
+            }
+        }
+        Err(CommandParseError::UnknownCommand(s)) => Some(format!("Unknown command: '{s}'")),
+        Err(CommandParseError::InvalidSyntax(s)) => Some(s)
+    };
+
+    Ok(response)
+}
+
 /// Execute the game loop for the given session.
-async fn run_internal(pool: PgPool, writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHalf<'_>>, world: Arc<World>) -> Result<(), SessionError> {
+async fn run_internal(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHalf<'_>>, pool: PgPool, world: Arc<World>, event_bus: Arc<EventBus>) -> Result<(), SessionError> {
     send(writer, "Enter your username:").await?;
     let username = match recv(reader).await? {
         Some(s) => s,
@@ -125,57 +182,52 @@ async fn run_internal(pool: PgPool, writer: &mut WriteHalf<'_>, reader: &mut Buf
         }
     };
 
-    let mut player = Player::new(account.username, RoomId::new(account.current_room_id));
+    let player = Player::new(account.username, RoomId::new(account.current_room_id));
 
-    welcome(writer, &player).await?;
+    let mut session_context = SessionContext::new(world, pool, event_bus, player)?;
 
-    let name = player.name().to_owned();
+    welcome(writer, &session_context.player).await?;
 
-    let mut context = SessionContext { world, pool };
+    let name = session_context.player.name().to_owned();
 
     loop {
-        let response = match recv(reader).await? {
-            None => {
-                tracing::info!("Player '{name}' disconnected");
-                break;
-            }
-            Some(input) => {
-                match Command::parse(&input) {
-                    Ok(command) => {
-                        let result = match command {
-                            Command::Go(direction) => handle_go(&mut context, &mut player, direction).await,
-                            Command::Look => handle_look(&context, &mut player),
-                            Command::Quit => {
-                                let name = player.name();
-                                tracing::info!("Player '{name}' quit");
-                                send(writer, &format!("Goodbye {name}!")).await?;
-                                break;
-                            }
-                        };
-
-                        match result {
-                            Ok(s) => s,
-                            Err(CommandExecutionError::InvalidCommand(s)) => s,
-                            Err(CommandExecutionError::Unrecoverable(s)) => {
-                                tracing::error!("Unrecoverable error occurred processing command from '{name}': {s}");
-                                format!("Cannot execute command: {s}")
-                            }
+        tokio::select! {
+            line = recv(reader) => {
+                match line {
+                    Ok(Some(input)) => {
+                        let response = handle_input(&mut session_context, &input).await?;
+                        if let Some(s) = response {
+                            send(writer, &s).await?;
                         }
-                    }
-                    Err(CommandParseError::UnknownCommand(s)) => format!("Unknown command: '{s}'"),
-                    Err(CommandParseError::InvalidSyntax(s)) => s
+                    },
+                    Ok(None) => {
+                        tracing::info!("Player '{name}' disconnected");
+                        break;
+                    },
+                    Err(e) => return Err(e)
                 }
             }
-        };
-
-        send(writer, &response).await?
+            event = session_context.receiver.recv() => {
+                match event {
+                    Some(e) => {
+                        match e {
+                            GameEvent::Message(s) => send(writer, &s).await?,
+                            GameEvent::SessionEnded => break
+                        }
+                    },
+                    None => {
+                        tracing::warn!("No senders in event bus");
+                    }
+                }
+            }
+        }
     }
 
     Ok(())
 }
 
-pub async fn run(pool: PgPool, writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHalf<'_>>, world: Arc<World>) -> Result<(), SessionError> {
-    let result = run_internal(pool, writer, reader, world).await;
+pub async fn run(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHalf<'_>>, pool: PgPool, world: Arc<World>, event_bus: Arc<EventBus>) -> Result<(), SessionError> {
+    let result = run_internal(writer, reader, pool, world, event_bus).await;
     match &result {
         Ok(()) => (),
         Err(e) => {
