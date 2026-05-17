@@ -74,10 +74,10 @@ pub struct SessionContext {
 }
 
 impl SessionContext {
-    pub fn new(account: AccountRow, world: Arc<World>, pool: PgPool, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<SessionContext, SessionError> {
-        entities.spawn(account.username.clone(), RoomId::new(account.current_room_id))?;
-        let receiver = event_bus.register(&account.username)?;
-        Ok(SessionContext { player_name: account.username, world, pool, event_bus, receiver, entities })
+    pub fn new(username: String, room: RoomId, world: Arc<World>, pool: PgPool, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<SessionContext, SessionError> {
+        entities.spawn(username.clone(), room)?;
+        let receiver = event_bus.register(&username)?;
+        Ok(SessionContext { player_name: username, world, pool, event_bus, receiver, entities })
     }
 }
 
@@ -196,7 +196,7 @@ async fn run_internal(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHal
         }
     };
 
-    let mut session_context = SessionContext::new(account, world, pool, event_bus, entities)?;
+    let mut session_context = SessionContext::new(account.username, RoomId::new(account.current_room_id), world, pool, event_bus, entities)?;
     welcome(writer, &session_context).await?;
 
     loop {
