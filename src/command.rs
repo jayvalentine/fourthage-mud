@@ -3,6 +3,7 @@ use crate::{db, event::{Event, EventTarget, GameEvent}, model::world::{Direction
 pub enum Command {
     Go(Direction),
     Say(String),
+    Who,
     Look,
     Quit
 }
@@ -82,7 +83,8 @@ impl Command {
                     "" => Err(CommandParseError::InvalidSyntax("Say what?".into())),
                     _ => Ok(Command::Say(sentence.into()))
                 }
-            }
+            },
+            "who" => Ok(Command::Who),
             "look" => Ok(Command::Look),
             "quit" => Ok(Command::Quit),
             _ => Err(CommandParseError::UnknownCommand(input.to_string())),
@@ -143,6 +145,26 @@ fn handle_say(context: &SessionContext, sentence: &str) -> Result<CommandResult,
     Ok(CommandResult::Action(result))
 }
 
+fn handle_who(context: &SessionContext) -> Result<CommandResult, CommandExecutionError> {
+    let online = context.entities.online_players()
+        .map_err(|_| CommandExecutionError::Unrecoverable("Could not get online player list".into()))?;
+
+    let mut online: Vec<String> = online.iter()
+        .filter(|p| **p != context.player_name)
+        .map(|s| format!("    {s}"))
+        .collect();
+    online.sort();
+
+    let response = if online.is_empty() {
+        "No other players online.".to_string()
+    } else {
+        let online = online.join("\n");
+        format!("Online:\n{online}")
+    };
+
+    Ok(CommandResult::Query(QueryResult { response }))
+}
+
 fn handle_look(context: &SessionContext) -> Result<CommandResult, CommandExecutionError> {
     let position = context.entities.get_position(&context.player_name)
         .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {}", &context.player_name)))?;
@@ -154,6 +176,7 @@ pub async fn handle_command(context: &mut SessionContext, command: Command) -> R
     match command {
         Command::Go(direction) => handle_go(context, direction).await,
         Command::Say(sentence) => handle_say(context, &sentence),
+        Command::Who => handle_who(context),
         Command::Look => handle_look(context),
         Command::Quit => {
             let name = &context.player_name;

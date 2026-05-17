@@ -123,6 +123,12 @@ impl EntityRegistry {
         let position = internal.positions.get_position(name).ok_or(EntityRegistryError::UnknownEntity(name.into()))?;
         Ok(position.clone())
     }
+
+    pub fn online_players(&self) -> Result<HashSet<String>, EntityRegistryError> {
+        let internal = self.internal.lock()?;
+
+        Ok(internal.entities.clone())
+    }
 }
 
 impl EventTargetResolver<EntityRegistryError> for EntityRegistry {
