@@ -3,6 +3,7 @@ use std::sync::Arc;
 use sqlx::PgPool;
 use tokio::net::{tcp::WriteHalf, tcp::ReadHalf};
 use tokio::io::{AsyncWriteExt, AsyncBufReadExt, BufReader};
+use tokio::sync::mpsc;
 
 use crate::command::{Command, CommandExecutionError, CommandParseError, CommandResult, handle_command};
 use crate::event::{EventBus, EventBusError, GameEvent};
@@ -57,7 +58,15 @@ pub struct SessionContext {
     pub world: Arc<World>,
     pub pool: PgPool,
     pub event_bus: Arc<EventBus>,
-    pub player: Player
+    pub player: Player,
+    receiver: mpsc::Receiver<GameEvent>
+}
+
+impl SessionContext {
+    pub fn new(world: Arc<World>, pool: PgPool, event_bus: Arc<EventBus>, player: Player) -> Result<SessionContext, SessionError> {
+        let receiver = event_bus.register(player.name())?;
+        Ok(SessionContext { world, pool, event_bus, player, receiver })
+    }
 }
 
 impl Drop for SessionContext {
@@ -175,18 +184,11 @@ async fn run_internal(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHal
 
     let player = Player::new(account.username, RoomId::new(account.current_room_id));
 
-    let mut session_context = SessionContext {
-        pool,
-        world,
-        event_bus,
-        player
-    };
+    let mut session_context = SessionContext::new(world, pool, event_bus, player)?;
 
     welcome(writer, &session_context.player).await?;
 
     let name = session_context.player.name().to_owned();
-
-    let mut receiver = session_context.event_bus.register(session_context.player.name())?;
 
     loop {
         tokio::select! {
@@ -206,7 +208,7 @@ async fn run_internal(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHal
                     Err(e) => return Err(e)
                 }
             }
-            event = receiver.recv() => {
+            event = session_context.receiver.recv() => {
                 match event {
                     Some(e) => {
                         match e {
@@ -214,7 +216,9 @@ async fn run_internal(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHal
                             GameEvent::SessionEnded => break
                         }
                     },
-                    None => ()
+                    None => {
+                        tracing::warn!("No senders in event bus");
+                    }
                 }
             }
         }
