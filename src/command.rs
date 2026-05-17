@@ -60,7 +60,7 @@ impl Command {
 
     pub fn parse(input: &str) -> Result<Command, CommandParseError> {
         // split input into verb and optional argument
-        let mut parts = input.split(' ');
+        let mut parts = input.split_whitespace();
         let verb = parts.next().unwrap_or("").to_lowercase();
 
         match verb.as_str() {
