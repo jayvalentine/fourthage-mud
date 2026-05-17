@@ -1,10 +1,61 @@
-use std::{collections::HashMap, sync::{Mutex, PoisonError}};
+use std::{collections::{HashMap, HashSet}, sync::{Mutex, PoisonError}};
 
 use crate::{event::{EventTarget, EventTargetResolver}, model::world::RoomId};
 
-#[derive(Clone)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct Position {
     pub room: RoomId
+}
+
+struct PositionMap {
+    position_by_id: HashMap<String, Position>,
+    id_by_position: HashMap<Position, HashSet<String>>
+}
+
+impl PositionMap {
+    pub fn new() -> PositionMap {
+        PositionMap {
+            position_by_id: HashMap::new(),
+            id_by_position: HashMap::new()
+        }
+    }
+
+    pub fn get_position<'a>(&'a self, id: &str) -> Option<&'a Position> {
+        self.position_by_id.get(id)
+    }
+
+    pub fn update_position(&mut self, id: &str, new_position: Position) {
+        // Remove entry from set for old position if present.
+        // Entity may not be present, e.g. if this is the first time the position is being set.
+        if let Some(p) = self.position_by_id.get(id) {
+            if let Some(entry) = self.id_by_position.get_mut(p) {
+                entry.remove(id);
+            }
+        }
+
+        // Add entity to map for new position.
+        self.id_by_position
+            .entry(new_position.clone()).or_default()
+            .insert(id.into());
+
+        // Update position in ID mapping.
+        self.position_by_id.insert(id.into(), new_position);
+    }
+
+    /// Remove the position of the given entity from the map.
+    pub fn remove_position(&mut self, id: &str) {
+        if let Some(p) = self.position_by_id.get(id) {
+            if let Some(entry) = self.id_by_position.get_mut(p) {
+                entry.remove(id);
+            }
+        }
+
+        self.position_by_id.remove(id);
+    }
+
+    pub fn get_at_position(&self, position: &Position) -> Option<&HashSet<String>> {
+        self.id_by_position.get(position)
+    }
 }
 
 pub enum EntityRegistryError {
@@ -19,39 +70,57 @@ impl<T> From<PoisonError<T>> for EntityRegistryError {
     }
 }
 
+struct EntityRegistryInternal {
+    entities: HashSet<String>,
+    positions: PositionMap
+}
+
 pub struct EntityRegistry {
-    positions: Mutex<HashMap<String, Position>>
+    internal: Mutex<EntityRegistryInternal>
 }
 
 impl EntityRegistry {
     pub fn new() -> EntityRegistry {
-        EntityRegistry { positions: Mutex::new(HashMap::new()) }
+        let internal = EntityRegistryInternal {
+            entities: HashSet::new(),
+            positions: PositionMap::new()
+        };
+        EntityRegistry {
+            internal: Mutex::new(internal)
+        }
     }
 
     pub fn spawn(&self, name: String, starting_room: RoomId) -> Result<(), EntityRegistryError> {
-        let mut positions = self.positions.lock()?;
-        if positions.contains_key(&name) {
+        let mut internal = self.internal.lock()?;
+
+        if internal.entities.contains(&name) {
             return Err(EntityRegistryError::DuplicateSpawn(name));
         }
-        positions.insert(name, Position { room: starting_room });
+
+        internal.entities.insert(name.clone());
+        internal.positions.update_position(&name, Position { room: starting_room });
         Ok(())
     }
 
     pub fn despawn(&self, name: &str) -> Result<(), EntityRegistryError> {
-        self.positions.lock()?.remove(name);
+        let mut internal = self.internal.lock()?;
+
+        internal.entities.remove(name);
+        internal.positions.remove_position(name);
         Ok(())
     }
 
     pub fn update_position(&self, name: &str, new_position: RoomId) -> Result<(), EntityRegistryError> {
-        let mut positions = self.positions.lock()?;
-        let position = positions.get_mut(name).ok_or(EntityRegistryError::UnknownEntity(name.into()))?;
-        position.room = new_position;
+        let mut internal = self.internal.lock()?;
+
+        internal.positions.update_position(name, Position { room: new_position });
         Ok(())
     }
 
     pub fn get_position(&self, name: &str) -> Result<Position, EntityRegistryError> {
-        let positions = self.positions.lock()?;
-        let position = positions.get(name).ok_or(EntityRegistryError::UnknownEntity(name.into()))?;
+        let internal = self.internal.lock()?;
+
+        let position = internal.positions.get_position(name).ok_or(EntityRegistryError::UnknownEntity(name.into()))?;
         Ok(position.clone())
     }
 }
@@ -60,7 +129,15 @@ impl EventTargetResolver<EntityRegistryError> for EntityRegistry {
     fn resolve(&self, target: &EventTarget) -> Result<Vec<String>, EntityRegistryError> {
         match target {
             EventTarget::Player(s) => Ok(vec![s.into()]),
-            EventTarget::RoomExcept(id, s) => Ok(self.positions.lock()?.iter().filter(|v| v.1.room.eq(id) && !v.0.eq(s)).map(|v| v.0.to_string()).collect())
+            EventTarget::RoomExcept(id, s) => {
+                let internal = self.internal.lock()?;
+
+                let targets = match internal.positions.get_at_position(&Position { room: id.clone() }) {
+                    Some(entities) => entities.iter().map(|e| e.clone()).filter(|e| e != s).collect(),
+                    None => Vec::new()
+                };
+                Ok(targets)
+            }
         }
     }
 }

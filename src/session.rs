@@ -9,7 +9,7 @@ use crate::command::{Command, CommandExecutionError, CommandParseError, CommandR
 use crate::entities::{EntityRegistry, EntityRegistryError};
 use crate::event::{EventBus, EventBusError, EventTargetResolver, GameEvent};
 use crate::model::world::{World, RoomId};
-use crate::db::{self, AccountRow, DatabaseError};
+use crate::db::{self, DatabaseError};
 use crate::password::{self, PasswordError};
 
 #[derive(Debug)]
