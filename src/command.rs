@@ -95,8 +95,8 @@ fn get_room_description(context: &SessionContext, id: &RoomId) -> Result<String,
     Ok(response)
 }
 
-async fn handle_go(context: &SessionContext, player: &mut Player, direction: Direction) -> Result<CommandResult, CommandExecutionError> {
-    let current_room = context.world.get_room(player.current_room())
+async fn handle_go(context: &mut SessionContext, direction: Direction) -> Result<CommandResult, CommandExecutionError> {
+    let current_room = context.world.get_room(context.player.current_room())
         .ok_or(CommandExecutionError::Unrecoverable("Could not retrieve room based on current room ID".into()))?;
 
     let destination_room_id = match current_room.get_destination(direction) {
@@ -104,8 +104,8 @@ async fn handle_go(context: &SessionContext, player: &mut Player, direction: Dir
         None => return Ok(CommandResult::Query(QueryResult { response: format!("You cannot go {direction} from here.") }))
     };
 
-    player.move_to(destination_room_id);
-    db::update_room_id(&context.pool, player.name(), destination_room_id.value())
+    context.player.move_to(destination_room_id);
+    db::update_room_id(&context.pool, context.player.name(), destination_room_id.value())
         .await.map_err(|_| CommandExecutionError::Unrecoverable("Failed to update room ID in database".into()))?;
 
     let description = get_room_description(context, destination_room_id)?;
@@ -115,17 +115,17 @@ async fn handle_go(context: &SessionContext, player: &mut Player, direction: Dir
     Ok(CommandResult::Action(result))
 }
 
-fn handle_look(context: &SessionContext, player: &Player) -> Result<CommandResult, CommandExecutionError> {
-    let response = get_room_description(context, player.current_room())?;
+fn handle_look(context: &SessionContext) -> Result<CommandResult, CommandExecutionError> {
+    let response = get_room_description(context, context.player.current_room())?;
     Ok(CommandResult::Query(QueryResult { response }))
 }
 
-pub async fn handle_command(context: &SessionContext, player: &mut Player, command: Command) -> Result<CommandResult, CommandExecutionError> {
+pub async fn handle_command(context: &mut SessionContext, command: Command) -> Result<CommandResult, CommandExecutionError> {
     match command {
-        Command::Go(direction) => handle_go(context, player, direction).await,
-        Command::Look => handle_look(context, player),
+        Command::Go(direction) => handle_go(context, direction).await,
+        Command::Look => handle_look(context),
         Command::Quit => {
-            let name = player.name();
+            let name = context.player.name();
             tracing::info!("Player '{name}' quit");
             let quit_event = Event {
                 event: GameEvent::SessionEnded,

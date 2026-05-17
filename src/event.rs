@@ -48,11 +48,14 @@ impl EventBus {
     pub fn register(&self, id: &str) -> Result<mpsc::Receiver<GameEvent>, EventBusError> {
         let (tx, rx) = mpsc::channel::<GameEvent>(Self::BUFFER_SIZE);
         self.subscribers.lock()?.insert(id.into(), tx);
+
+        tracing::debug!("Entity '{id}' registered on event bus");
         Ok(rx)
     }
 
     pub fn unregister(&self, id: &str) -> Result<(), EventBusError> {
         self.subscribers.lock()?.remove(id);
+        tracing::debug!("Entity '{id}' un-registered from event bus");
         Ok(())
     }
 

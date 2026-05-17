@@ -68,15 +68,11 @@ async fn main() -> Result<(), AppError> {
                 let pool = pool.clone();
                 let event_bus = event_bus.clone();
 
-                let context = SessionContext {
-                    world, pool, event_bus
-                };
-
                 tokio::spawn(async move {
                     let (reader, mut writer) = socket.split();
                     let mut reader = BufReader::new(reader);
 
-                    session::run(&mut writer, &mut reader, context).await.unwrap_or_else(|e| {
+                    session::run(&mut writer, &mut reader, pool, world, event_bus).await.unwrap_or_else(|e| {
                         tracing::error!("Error during session from {addr}: {e:?}");
                     });
 

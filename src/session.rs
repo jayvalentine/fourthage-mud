@@ -56,7 +56,14 @@ impl From<EventBusError> for SessionError {
 pub struct SessionContext {
     pub world: Arc<World>,
     pub pool: PgPool,
-    pub event_bus: Arc<EventBus>
+    pub event_bus: Arc<EventBus>,
+    pub player: Player
+}
+
+impl Drop for SessionContext {
+    fn drop(&mut self) {
+        let _ = self.event_bus.unregister(self.player.name());
+    }
 }
 
 /// Send a line of text to the client.
@@ -108,10 +115,10 @@ async fn welcome(writer: &mut WriteHalf<'_>, player: &Player) -> Result<(), Sess
     send(writer, &format!("Welcome {name}!")).await
 }
 
-async fn handle_input(session_context: &SessionContext, player: &mut Player, input: &str) -> Result<Option<String>, SessionError> {
+async fn handle_input(session_context: &mut SessionContext, input: &str) -> Result<Option<String>, SessionError> {
     let response = match Command::parse(&input) {
         Ok(command) => {
-            let result = handle_command(session_context, player, command).await?;
+            let result = handle_command(session_context, command).await?;
 
             match result {
                 CommandResult::Query(q) => Some(q.response().into()),
@@ -131,14 +138,14 @@ async fn handle_input(session_context: &SessionContext, player: &mut Player, inp
 }
 
 /// Execute the game loop for the given session.
-async fn run_internal(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHalf<'_>>, session_context: SessionContext) -> Result<(), SessionError> {
+async fn run_internal(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHalf<'_>>, pool: PgPool, world: Arc<World>, event_bus: Arc<EventBus>) -> Result<(), SessionError> {
     send(writer, "Enter your username:").await?;
     let username = match recv(reader).await? {
         Some(s) => s,
         None => return Ok(())
     };
 
-    let account = db::get_account(&session_context.pool, &username).await?;
+    let account = db::get_account(&pool, &username).await?;
     let account = match account {
         Some(a) => {
             // Account exists; verify password.
@@ -162,24 +169,31 @@ async fn run_internal(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHal
                 None => return Ok(())
             };
             let password_hash = password::hash_password(&password)?;
-            db::create_account(&session_context.pool, &username, &password_hash).await?
+            db::create_account(&pool, &username, &password_hash).await?
         }
     };
 
-    let mut player = Player::new(account.username, RoomId::new(account.current_room_id));
+    let player = Player::new(account.username, RoomId::new(account.current_room_id));
 
-    welcome(writer, &player).await?;
+    let mut session_context = SessionContext {
+        pool,
+        world,
+        event_bus,
+        player
+    };
 
-    let name = player.name().to_owned();
+    welcome(writer, &session_context.player).await?;
 
-    let mut receiver = session_context.event_bus.register(player.name())?;
+    let name = session_context.player.name().to_owned();
+
+    let mut receiver = session_context.event_bus.register(session_context.player.name())?;
 
     loop {
         tokio::select! {
             line = recv(reader) => {
                 match line {
                     Ok(Some(input)) => {
-                        let response = handle_input(&session_context, &mut player, &input).await?;
+                        let response = handle_input(&mut session_context, &input).await?;
                         match response {
                             Some(s) => send(writer, &s).await?,
                             None => ()
@@ -206,13 +220,11 @@ async fn run_internal(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHal
         }
     }
 
-    session_context.event_bus.unregister(player.name())?;
-
     Ok(())
 }
 
-pub async fn run(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHalf<'_>>, session_context: SessionContext) -> Result<(), SessionError> {
-    let result = run_internal(writer, reader, session_context).await;
+pub async fn run(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHalf<'_>>, pool: PgPool, world: Arc<World>, event_bus: Arc<EventBus>) -> Result<(), SessionError> {
+    let result = run_internal(writer, reader, pool, world, event_bus).await;
     match &result {
         Ok(()) => (),
         Err(e) => {
