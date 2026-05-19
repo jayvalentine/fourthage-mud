@@ -1,16 +1,9 @@
 use core::fmt;
-use std::{collections::{HashMap, HashSet}, sync::{Mutex, PoisonError}};
+use std::{collections::{HashMap, HashSet}, sync::{PoisonError, RwLock}};
 
-use crate::{event::{EventTarget, EventTargetResolver}, model::world::RoomId};
+use sqlx::PgPool;
 
-#[derive(Clone, Hash, PartialEq, Eq, Debug)]
-pub struct EntityId(u32);
-
-impl EntityId {
-    pub fn new(id: u32) -> EntityId {
-        EntityId(id)
-    }
-}
+use crate::{db::{self, DatabaseError}, event::{EventTarget, EventTargetResolver}, model::ids::{RoomId, EntityId}};
 
 struct PositionMap {
     position_by_id: HashMap<EntityId, Position>,
@@ -61,8 +54,8 @@ impl PositionMap {
 
 pub enum EntityRegistryError {
     InvalidMutex,
-    UnknownEntity(String),
-    DuplicateSpawn(String)
+    UnknownEntity(EntityId),
+    DuplicateSpawn(EntityId)
 }
 
 impl<T> From<PoisonError<T>> for EntityRegistryError {
@@ -71,9 +64,8 @@ impl<T> From<PoisonError<T>> for EntityRegistryError {
     }
 }
 
-struct EntityRegistryInternal {
+pub struct EntityRegistryInternal {
     entities: HashSet<EntityId>,
-    next_entity: u32,
     positions: PositionMap,
     names: HashMap<EntityId, Name>
 }
@@ -87,66 +79,105 @@ pub trait ComponentStorage {
 
     fn remove(entities: &mut EntityRegistryInternal, entity: &EntityId)
     where Self: Sized;
+
+    fn storage(entities: &EntityRegistryInternal) -> &HashMap<EntityId, Self>
+    where Self: Sized;
+}
+
+pub trait Persistable {
+    async fn save(entity: &EntityId, component: &Self, pool: &PgPool) -> Result<(), DatabaseError>
+    where Self: Sized;
+
+    async fn load(entity: &EntityId, pool: &PgPool) -> Result<Option<Self>, DatabaseError>
+    where Self: Sized;
 }
 
 pub struct EntityRegistry {
-    internal: Mutex<EntityRegistryInternal>,
+    internal: RwLock<EntityRegistryInternal>,
 }
 
 impl EntityRegistry {
     pub fn new() -> EntityRegistry {
         let internal = EntityRegistryInternal {
             entities: HashSet::new(),
-            next_entity: 0,
             positions: PositionMap::new(),
             names: HashMap::new()
         };
         EntityRegistry {
-            internal: Mutex::new(internal)
+            internal: RwLock::new(internal)
         }
     }
 
-    pub fn spawn(&self) -> Result<EntityId, EntityRegistryError> {
-        let mut internal = self.internal.lock()?;
+    pub fn spawn(&self, entity_id: EntityId) -> Result<EntityId, EntityRegistryError> {
+        let mut internal = self.internal.write()?;
+        if internal.entities.contains(&entity_id) {
+            return Err(EntityRegistryError::DuplicateSpawn(entity_id))
+        }
+        
+        internal.entities.insert(entity_id.clone());
 
-        let id = internal.next_entity;
-        internal.next_entity += 1;
-
-        Ok(EntityId::new(id))
+        Ok(entity_id)
     }
 
     pub fn despawn(&self, id: &EntityId) -> Result<(), EntityRegistryError> {
-        self.internal.lock()?.entities.remove(id);
-
         // When new components are added, ensure they are handled here.
         self.remove_component::<Position>(id)?;
         self.remove_component::<Name>(id)?;
+        
+        {
+            let mut internal = self.internal.write()?;
+            Self::validate_entity(&internal, id)?;
+            internal.entities.remove(id);
+        }
 
         Ok(())
     }
 
     pub fn get_component<T: ComponentStorage + Clone>(&self, e: &EntityId) -> Result<Option<T>, EntityRegistryError> {
-        let internal = self.internal.lock()?;
+        let internal = self.internal.read()?;
+        Self::validate_entity(&internal, e)?;
         Ok(T::get(&internal, e).cloned())
     }
 
     pub fn remove_component<T: ComponentStorage>(&self, e: &EntityId) -> Result<(), EntityRegistryError> {
-        let mut internal = self.internal.lock()?;
+        let mut internal = self.internal.write()?;
+        Self::validate_entity(&internal, e)?;
         T::remove(&mut internal, e);
         Ok(())
     }
 
     pub fn update_component<T: ComponentStorage>(&self, e: &EntityId, c: T) -> Result<(), EntityRegistryError> {
-        let mut internal = self.internal.lock()?;
+        let mut internal = self.internal.write()?;
+        Self::validate_entity(&internal, e)?;
         T::update(&mut internal, e, c);
 
         Ok(())
     }
 
+    pub fn query<T, R, F>(&self, f: F) -> Result<R, EntityRegistryError>
+    where
+        T: ComponentStorage,
+        F: FnOnce(&mut dyn Iterator<Item = (&EntityId, &T)>) -> Result<R, EntityRegistryError>
+    {
+        let internal = self.internal.read()?;
+
+        let mut iter = T::storage(&internal).iter();
+        f(&mut iter)
+    }
+
     pub fn online_players(&self) -> Result<HashSet<EntityId>, EntityRegistryError> {
-        let internal = self.internal.lock()?;
+        let internal = self.internal.read()?;
 
         Ok(internal.entities.clone())
+    }
+
+    /// Helper function to validate if an entity ID is valid.
+    fn validate_entity(internal: &EntityRegistryInternal, entity: &EntityId) -> Result<(), EntityRegistryError> {
+        if internal.entities.contains(entity) {
+            Ok(())
+        } else {
+            Err(EntityRegistryError::UnknownEntity(entity.clone()))
+        }
     }
 }
 
@@ -155,7 +186,7 @@ impl EventTargetResolver<EntityRegistryError> for EntityRegistry {
         match target {
             EventTarget::Entity(id) => Ok(vec![id.clone()]),
             EventTarget::RoomExcept(room_id, entity_id) => {
-                let internal = self.internal.lock()?;
+                let internal = self.internal.read()?;
 
                 let targets = match internal.positions.get_at_position(&Position { room: room_id.clone() }) {
                     Some(entities) => entities.iter().map(|e| e.clone()).filter(|e| e != entity_id).collect(),
@@ -179,7 +210,7 @@ impl ComponentStorage for Position {
         entities.positions.position_by_id.get(entity)
     }
 
-    fn update(entities: &mut EntityRegistryInternal, entity: &EntityId, component: Position)
+    fn update(entities: &mut EntityRegistryInternal, entity: &EntityId, component: Self)
     where Self: Sized
     {
         entities.positions.update_position(entity, component);
@@ -189,6 +220,26 @@ impl ComponentStorage for Position {
     where Self: Sized
     {
         entities.positions.remove_position(entity);
+    }
+
+    fn storage(entities: &EntityRegistryInternal) -> &HashMap<EntityId, Self>
+    where Self: Sized
+    {
+        &entities.positions.position_by_id
+    }
+}
+
+impl Persistable for Position {
+    async fn save(entity: &EntityId, component: &Self, pool: &PgPool) -> Result<(), DatabaseError>
+    where Self: Sized
+    {
+        db::update_position(pool, entity, &component.room).await
+    }
+
+    async fn load(entity: &EntityId, pool: &PgPool) -> Result<Option<Self>, DatabaseError>
+    where Self: Sized
+    {
+        db::get_position(pool, entity).await.map(|o| o.map(|id| Position { room: id }))
     }
 }
 
@@ -214,6 +265,12 @@ impl ComponentStorage for Name {
     where Self: Sized
     {
         entities.names.remove(entity);
+    }
+
+    fn storage(entities: &EntityRegistryInternal) -> &HashMap<EntityId, Self>
+    where Self: Sized
+    {
+        &entities.names
     }
 }
 

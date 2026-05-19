@@ -6,9 +6,10 @@ use tokio::io::{AsyncWriteExt, AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc;
 
 use crate::command::{Command, CommandExecutionError, CommandParseError, CommandResult, handle_command};
-use crate::entities::{EntityId, EntityRegistry, EntityRegistryError, Position, Name};
+use crate::entities::{EntityRegistry, EntityRegistryError, Name, Persistable, Position};
 use crate::event::{EventBus, EventBusError, EventTargetResolver, GameEvent};
-use crate::model::world::{World, RoomId};
+use crate::model::ids::{EntityId, RoomId};
+use crate::model::world::{World};
 use crate::db::{self, DatabaseError};
 use crate::password::{self, PasswordError};
 
@@ -58,7 +59,7 @@ impl From<EntityRegistryError> for SessionError {
     fn from(value: EntityRegistryError) -> Self {
         match value {
             EntityRegistryError::InvalidMutex => SessionError::Internal("Entity registry holds invalid mutex".into()),
-            EntityRegistryError::UnknownEntity(name) => SessionError::Internal(format!("Attempted to update property of unknown entity '{name}'")),
+            EntityRegistryError::UnknownEntity(entity) => SessionError::Internal(format!("Attempted to update property of unknown entity '{entity:?}'")),
             EntityRegistryError::DuplicateSpawn(_) => SessionError::Login
         }
     }
@@ -74,15 +75,16 @@ pub struct SessionContext {
 }
 
 impl SessionContext {
-    pub fn new(username: String, room: RoomId, world: Arc<World>, pool: PgPool, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<SessionContext, SessionError> {
-        let player_id = entities.spawn()?;
-        tracing::debug!("Session started for player {username} (id: {player_id:?})");
-        entities.update_component(&player_id, Position { room })?;
-        entities.update_component(&player_id, Name { value: username })?;
+    pub fn new(id: EntityId, username: String, position: Position, world: Arc<World>, pool: PgPool, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<SessionContext, SessionError> {
+        tracing::debug!("Session started for player {username} (id: {id:?})");
 
-        let receiver = event_bus.register(&player_id)?;
+        let id = entities.spawn(id)?;
+        entities.update_component(&id, position)?;
+        entities.update_component(&id, Name { value: username })?;
 
-        Ok(SessionContext { player_id, world, pool, event_bus, receiver, entities })
+        let receiver = event_bus.register(&id)?;
+
+        Ok(SessionContext { player_id: id, world, pool, event_bus, receiver, entities })
     }
 
     pub fn player_name(&self) -> Result<Name, SessionError> {
@@ -206,7 +208,11 @@ async fn run_internal(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedR
         }
     };
 
-    let mut session_context = SessionContext::new(account.username, RoomId::new(account.current_room_id), world, pool, event_bus, entities)?;
+    let position = match Position::load(&account.id, &pool).await? {
+        Some(p) => p,
+        None => Position { room: RoomId::new(0) }
+    };
+    let mut session_context = SessionContext::new(account.id, account.username, position, world, pool, event_bus, entities)?;
     welcome(writer, &session_context).await?;
 
     loop {

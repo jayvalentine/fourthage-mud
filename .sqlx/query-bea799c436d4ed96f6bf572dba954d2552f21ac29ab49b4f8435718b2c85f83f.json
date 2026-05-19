@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "INSERT INTO accounts (username, password_hash) VALUES ($1, $2)\n         RETURNING id, username, password_hash, current_room_id",
+  "query": "INSERT INTO accounts (username, password_hash) VALUES ($1, $2)\n         RETURNING id, username, password_hash",
   "describe": {
     "columns": [
       {
@@ -17,11 +17,6 @@
         "ordinal": 2,
         "name": "password_hash",
         "type_info": "Text"
-      },
-      {
-        "ordinal": 3,
-        "name": "current_room_id",
-        "type_info": "Int4"
       }
     ],
     "parameters": {
@@ -33,9 +28,8 @@
     "nullable": [
       false,
       false,
-      false,
       false
     ]
   },
-  "hash": "033499324be8036d55380d4f39547fc95499fa2f8b85c82ca699c7038186e748"
+  "hash": "bea799c436d4ed96f6bf572dba954d2552f21ac29ab49b4f8435718b2c85f83f"
 }

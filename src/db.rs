@@ -1,4 +1,6 @@
-use sqlx::PgPool;
+use sqlx::{PgPool};
+
+use crate::model::ids::{EntityId, RoomId};
 
 pub enum DatabaseError {
     SqlxError(sqlx::Error)
@@ -11,19 +13,19 @@ impl From<sqlx::Error> for DatabaseError {
 }
 
 pub struct AccountRow {
+    pub id: EntityId,
     pub username: String,
-    pub password_hash: String,
-    pub current_room_id: i32
+    pub password_hash: String
 }
 
 pub async fn get_account(pool: &PgPool, username: &str) -> Result<Option<AccountRow>, DatabaseError> {
     let account = sqlx::query!(
-        "SELECT id, username, password_hash, current_room_id FROM accounts WHERE username = $1",
+        "SELECT id, username, password_hash FROM accounts WHERE username = $1",
         username
     ).fetch_optional(pool).await?;
 
     match account {
-        Some(row) => Ok(Some(AccountRow { username: row.username, password_hash: row.password_hash, current_room_id: row.current_room_id })),
+        Some(row) => Ok(Some(AccountRow { id: EntityId::new(row.id), username: row.username, password_hash: row.password_hash })),
         None => Ok(None)
     }
 }
@@ -31,19 +33,31 @@ pub async fn get_account(pool: &PgPool, username: &str) -> Result<Option<Account
 pub async fn create_account(pool: &PgPool, username: &str, password_hash: &str) -> Result<AccountRow, DatabaseError> {
     let row = sqlx::query!(
         "INSERT INTO accounts (username, password_hash) VALUES ($1, $2)
-         RETURNING id, username, password_hash, current_room_id",
+         RETURNING id, username, password_hash",
         username,
         password_hash
     ).fetch_one(pool).await?;
 
-    Ok(AccountRow { username: row.username, password_hash: row.password_hash, current_room_id: row.current_room_id })
+    Ok(AccountRow { id: EntityId::new(row.id), username: row.username, password_hash: row.password_hash })
 }
 
-pub async fn update_room_id(pool: &PgPool, username: &str, room_id: i32) -> Result<(), DatabaseError> {
+pub async fn update_position(pool: &PgPool, id: &EntityId, room_id: &RoomId) -> Result<(), DatabaseError> {
     sqlx::query!(
-        "UPDATE accounts SET current_room_id = $1 WHERE username = $2",
-        room_id,
-        username
+        "UPDATE positions SET room_id = $1 WHERE entity_id = $2",
+        room_id.value(),
+        id.value()
     ).execute(pool).await?;
     Ok(())
+}
+
+pub async fn get_position(pool: &PgPool, id: &EntityId) -> Result<Option<RoomId>, DatabaseError> {
+    let room = sqlx::query!(
+        "SELECT room_id FROM positions WHERE entity_id = $1",
+        id.value()
+    ).fetch_optional(pool).await?;
+
+    match room {
+        Some(id) => Ok(Some(RoomId::new(id.room_id))),
+        None => Ok(None)
+    }
 }

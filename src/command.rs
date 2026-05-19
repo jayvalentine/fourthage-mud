@@ -1,4 +1,4 @@
-use crate::{db, entities::{EntityId, EntityRegistryError, Name, Position}, event::{Event, EventTarget, GameEvent}, model::world::{Direction, RoomId}, session::SessionContext};
+use crate::{entities::{EntityRegistryError, Name, Persistable, Position}, event::{Event, EventTarget, GameEvent}, model::{world::Direction, ids::{EntityId, RoomId}}, session::SessionContext};
 
 pub enum Command {
     Go(Direction),
@@ -125,15 +125,11 @@ async fn handle_go(context: &mut SessionContext, direction: Direction) -> Result
         None => return Ok(CommandResult::Query(QueryResult { response: format!("You cannot go {direction} from here.") }))
     };
 
-    context.entities.update_component(&context.player_id, Position { room: destination_room_id.clone() })
-        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not update position of entity '{:?}'", &context.player_id)))?;
-
-    let name = context.entities.get_component::<Name>(&context.player_id)
-        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get name for entity: {:?}", context.player_id)))?
-        .ok_or(CommandExecutionError::Unrecoverable(format!("Entity {:?} had no Name component", context.player_id)))?;
-    // TODO: Make the database interaction better
-    db::update_room_id(&context.pool, &name.value, destination_room_id.value())
+    let new_position = Position { room: destination_room_id.clone() };
+    Position::save(&context.player_id, &new_position, &context.pool)
         .await.map_err(|_| CommandExecutionError::Unrecoverable("Failed to update room ID in database".into()))?;
+    context.entities.update_component(&context.player_id, new_position)
+        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not update position of entity '{:?}'", &context.player_id)))?;
 
     let description = get_room_description(context, destination_room_id)?;
 
@@ -189,7 +185,7 @@ fn handle_who(context: &SessionContext) -> Result<CommandResult, CommandExecutio
 fn handle_look(context: &SessionContext) -> Result<CommandResult, CommandExecutionError> {
     let position = context.entities.get_component::<Position>(&context.player_id)
         .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {:?}", &context.player_id)))?
-        .ok_or(CommandExecutionError::Unrecoverable(format!("Entity {:?} has no position component", &context.player_id)))?;;
+        .ok_or(CommandExecutionError::Unrecoverable(format!("Entity {:?} has no position component", &context.player_id)))?;
     let response = get_room_description(context, &position.room)?;
     Ok(CommandResult::Query(QueryResult { response }))
 }

@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::{Mutex, PoisonError}};
 
 use tokio::sync::mpsc::{self, error::SendError};
 
-use crate::{entities::EntityId, model::world::RoomId};
+use crate::model::ids::{EntityId, RoomId};
 
 pub enum EventTarget {
     Entity(EntityId),
