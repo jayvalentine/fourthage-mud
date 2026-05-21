@@ -120,15 +120,14 @@ impl EntityRegistry {
     }
 
     pub fn despawn(&self, id: &EntityId) -> Result<(), EntityRegistryError> {
-        // When new components are added, ensure they are handled here.
-        self.remove_component::<Position>(id)?;
-        self.remove_component::<Name>(id)?;
+        let mut internal = self.internal.write()?;
+        Self::validate_entity(&internal, id)?;
+
+        // When new component types are added, they must be removed here.
+        Position::remove(&mut internal, id);
+        Name::remove(&mut internal, id);
         
-        {
-            let mut internal = self.internal.write()?;
-            Self::validate_entity(&internal, id)?;
-            internal.entities.remove(id);
-        }
+        internal.entities.remove(id);
 
         Ok(())
     }
