@@ -126,10 +126,10 @@ async fn handle_go(context: &mut SessionContext, direction: Direction) -> Result
     };
 
     let new_position = Position { room: destination_room_id.clone() };
+    context.entities.update_component(&context.player_id, new_position.clone())
+        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not update position of entity '{:?}'", &context.player_id)))?;
     Position::save(&context.player_id, &new_position, &context.pool)
         .await.map_err(|_| CommandExecutionError::Unrecoverable("Failed to update room ID in database".into()))?;
-    context.entities.update_component(&context.player_id, new_position)
-        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not update position of entity '{:?}'", &context.player_id)))?;
 
     let description = get_room_description(context, destination_room_id)?;
 
