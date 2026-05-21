@@ -64,13 +64,13 @@ impl<T> From<PoisonError<T>> for EntityRegistryError {
     }
 }
 
-pub struct EntityRegistryInternal {
+struct EntityRegistryInternal {
     entities: HashSet<EntityId>,
     positions: PositionMap,
     names: HashMap<EntityId, Name>
 }
 
-pub trait ComponentStorage {
+trait ComponentStorage {
     fn get<'a>(entities: &'a EntityRegistryInternal, entity: &EntityId) -> Option<&'a Self>
     where Self: Sized;
 
@@ -126,18 +126,20 @@ impl EntityRegistry {
         // When new component types are added, they must be removed here.
         Position::remove(&mut internal, id);
         Name::remove(&mut internal, id);
-        
+
         internal.entities.remove(id);
 
         Ok(())
     }
 
+    #[allow(private_bounds)]
     pub fn get_component<T: ComponentStorage + Clone>(&self, e: &EntityId) -> Result<Option<T>, EntityRegistryError> {
         let internal = self.internal.read()?;
         Self::validate_entity(&internal, e)?;
         Ok(T::get(&internal, e).cloned())
     }
 
+    #[allow(private_bounds)]
     pub fn remove_component<T: ComponentStorage>(&self, e: &EntityId) -> Result<(), EntityRegistryError> {
         let mut internal = self.internal.write()?;
         Self::validate_entity(&internal, e)?;
@@ -145,6 +147,7 @@ impl EntityRegistry {
         Ok(())
     }
 
+    #[allow(private_bounds)]
     pub fn update_component<T: ComponentStorage>(&self, e: &EntityId, c: T) -> Result<(), EntityRegistryError> {
         let mut internal = self.internal.write()?;
         Self::validate_entity(&internal, e)?;
@@ -153,6 +156,7 @@ impl EntityRegistry {
         Ok(())
     }
 
+    #[allow(private_bounds)]
     pub fn query<T, R, F>(&self, f: F) -> Result<R, EntityRegistryError>
     where
         T: ComponentStorage,
