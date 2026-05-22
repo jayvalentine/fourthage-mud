@@ -1,18 +1,7 @@
 use std::{collections::HashMap, fmt};
 use serde::Deserialize;
 
-#[derive(Clone, Hash, PartialEq, Eq, Deserialize, Debug)]
-pub struct RoomId(i32);
-
-impl RoomId {
-    pub fn new(id: i32) -> RoomId {
-        RoomId(id)
-    }
-
-    pub fn value(&self) -> i32 {
-        self.0
-    }
-}
+use super::ids::RoomId;
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq, Deserialize, Debug)]
 pub enum Direction {

@@ -11,6 +11,7 @@ mod db;
 mod password;
 mod event;
 mod entities;
+mod persistence;
 
 use model::world::World;
 use event::EventBus;
@@ -65,7 +66,7 @@ async fn main() -> Result<(), AppError> {
 
     loop {
         match listener.accept().await {
-            Ok((mut socket, addr)) => {
+            Ok((socket, addr)) => {
                 tracing::info!("Handling connection from {addr}");
                 let world = world.clone();
                 let pool = pool.clone();
@@ -73,7 +74,7 @@ async fn main() -> Result<(), AppError> {
                 let entities = entities.clone();
 
                 tokio::spawn(async move {
-                    let (reader, mut writer) = socket.split();
+                    let (reader, mut writer) = socket.into_split();
                     let mut reader = BufReader::new(reader);
 
                     session::run(&mut writer, &mut reader, pool, world, event_bus, entities).await.unwrap_or_else(|e| {

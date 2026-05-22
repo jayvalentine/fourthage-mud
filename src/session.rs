@@ -1,16 +1,18 @@
 use std::sync::Arc;
 
 use sqlx::PgPool;
-use tokio::net::{tcp::WriteHalf, tcp::ReadHalf};
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::io::{AsyncWriteExt, AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc;
 
 use crate::command::{Command, CommandExecutionError, CommandParseError, CommandResult, handle_command};
-use crate::entities::{EntityRegistry, EntityRegistryError};
+use crate::entities::{EntityRegistry, EntityRegistryError, Name, Position};
 use crate::event::{EventBus, EventBusError, EventTargetResolver, GameEvent};
-use crate::model::world::{World, RoomId};
+use crate::model::ids::{EntityId, RoomId};
+use crate::model::world::{World};
 use crate::db::{self, DatabaseError};
 use crate::password::{self, PasswordError};
+use crate::persistence;
 
 #[derive(Debug)]
 pub enum SessionError {
@@ -58,14 +60,14 @@ impl From<EntityRegistryError> for SessionError {
     fn from(value: EntityRegistryError) -> Self {
         match value {
             EntityRegistryError::InvalidMutex => SessionError::Internal("Entity registry holds invalid mutex".into()),
-            EntityRegistryError::UnknownEntity(name) => SessionError::Internal(format!("Attempted to update property of unknown entity '{name}'")),
+            EntityRegistryError::UnknownEntity(entity) => SessionError::Internal(format!("Attempted to update property of unknown entity '{entity:?}'")),
             EntityRegistryError::DuplicateSpawn(_) => SessionError::Login
         }
     }
 }
 
 pub struct SessionContext {
-    pub player_name: String,
+    pub player_id: EntityId,
     pub world: Arc<World>,
     pub pool: PgPool,
     pub event_bus: Arc<EventBus>,
@@ -74,22 +76,33 @@ pub struct SessionContext {
 }
 
 impl SessionContext {
-    pub fn new(username: String, room: RoomId, world: Arc<World>, pool: PgPool, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<SessionContext, SessionError> {
-        entities.spawn(username.clone(), room)?;
-        let receiver = event_bus.register(&username)?;
-        Ok(SessionContext { player_name: username, world, pool, event_bus, receiver, entities })
+    pub fn new(id: EntityId, username: String, position: Position, world: Arc<World>, pool: PgPool, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<SessionContext, SessionError> {
+        tracing::debug!("Session started for player {username} (id: {id:?})");
+
+        let id = entities.spawn(id)?;
+        entities.update_component(&id, position)?;
+        entities.update_component(&id, Name { value: username })?;
+
+        let receiver = event_bus.register(&id)?;
+
+        Ok(SessionContext { player_id: id, world, pool, event_bus, receiver, entities })
+    }
+
+    pub fn player_name(&self) -> Result<Name, SessionError> {
+        let name = self.entities.get_component::<Name>(&self.player_id)?.unwrap();
+        Ok(name)
     }
 }
 
 impl Drop for SessionContext {
     fn drop(&mut self) {
-        let _ = self.event_bus.unregister(&self.player_name);
-        let _ = self.entities.despawn(&self.player_name);
+        let _ = self.event_bus.unregister(&self.player_id);
+        let _ = self.entities.despawn(&self.player_id);
     }
 }
 
 /// Send a line of text to the client.
-async fn send(writer: &mut WriteHalf<'_>, s: &str) -> Result<(), SessionError> {
+async fn send(writer: &mut OwnedWriteHalf, s: &str) -> Result<(), SessionError> {
     writer.write_all(format!("{s}\n").as_bytes()).await.map_err(|_| SessionError::Send)
 }
 
@@ -97,7 +110,7 @@ async fn send(writer: &mut WriteHalf<'_>, s: &str) -> Result<(), SessionError> {
 /// Blocks until a complete line is received.
 ///
 /// Returns `Ok(None)` on EOF.
-async fn recv(reader: &mut BufReader<ReadHalf<'_>>) -> Result<Option<String>, SessionError> {
+async fn recv(reader: &mut BufReader<OwnedReadHalf>) -> Result<Option<String>, SessionError> {
     let mut line = String::new();
     match reader.read_line(&mut line).await {
         Ok(0) => Ok(None),
@@ -108,7 +121,7 @@ async fn recv(reader: &mut BufReader<ReadHalf<'_>>) -> Result<Option<String>, Se
 
 /// Get the initial password from the player (on account creation).
 /// Prompts the user to confirm the password and only exits once a valid confirmation is made.
-async fn get_initial_password(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHalf<'_>>) -> Result<Option<String>, SessionError> {
+async fn get_initial_password(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedReadHalf>) -> Result<Option<String>, SessionError> {
     loop {
         send(writer, "New account; enter your password:").await?;
         let initial_password = match recv(reader).await? {
@@ -132,8 +145,8 @@ async fn get_initial_password(writer: &mut WriteHalf<'_>, reader: &mut BufReader
 }
 
 /// Welcome the given player to the game.
-async fn welcome(writer: &mut WriteHalf<'_>, context: &SessionContext) -> Result<(), SessionError> {
-    let name = &context.player_name;
+async fn welcome(writer: &mut OwnedWriteHalf, context: &SessionContext) -> Result<(), SessionError> {
+    let name = &context.player_name()?;
     send(writer, &format!("Welcome {name}!")).await
 }
 
@@ -161,7 +174,7 @@ async fn handle_input(session_context: &mut SessionContext, input: &str) -> Resu
 }
 
 /// Execute the game loop for the given session.
-async fn run_internal(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHalf<'_>>, pool: PgPool, world: Arc<World>, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<(), SessionError> {
+async fn run_internal(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedReadHalf>, pool: PgPool, world: Arc<World>, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<(), SessionError> {
     send(writer, "Enter your username:").await?;
     let username = match recv(reader).await? {
         Some(s) => s,
@@ -196,7 +209,8 @@ async fn run_internal(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHal
         }
     };
 
-    let mut session_context = SessionContext::new(account.username, RoomId::new(account.current_room_id), world, pool, event_bus, entities)?;
+    let position = persistence::load_position(&account.id, &pool).await?.unwrap_or_default();
+    let mut session_context = SessionContext::new(account.id, account.username, position, world, pool, event_bus, entities)?;
     welcome(writer, &session_context).await?;
 
     loop {
@@ -210,7 +224,7 @@ async fn run_internal(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHal
                         }
                     },
                     Ok(None) => {
-                        tracing::info!("Player '{}' disconnected", &session_context.player_name);
+                        tracing::info!("Player '{}' disconnected", &session_context.player_name()?);
                         break;
                     },
                     Err(e) => return Err(e)
@@ -221,7 +235,10 @@ async fn run_internal(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHal
                     Some(e) => {
                         match e {
                             GameEvent::Message(s) => send(writer, &s).await?,
-                            GameEvent::SessionEnded => break
+                            GameEvent::SessionEnded => {
+                                tracing::debug!("Entity {:?} received SessionEnded", session_context.player_id);
+                                break;
+                            }
                         }
                     },
                     None => {
@@ -231,11 +248,10 @@ async fn run_internal(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHal
             }
         }
     }
-
     Ok(())
 }
 
-pub async fn run(writer: &mut WriteHalf<'_>, reader: &mut BufReader<ReadHalf<'_>>, pool: PgPool, world: Arc<World>, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<(), SessionError> {
+pub async fn run(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedReadHalf>, pool: PgPool, world: Arc<World>, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<(), SessionError> {
     let result = run_internal(writer, reader, pool, world, event_bus, entities).await;
     match &result {
         Ok(()) => (),

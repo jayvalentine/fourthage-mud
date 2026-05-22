@@ -2,11 +2,11 @@ use std::{collections::HashMap, sync::{Mutex, PoisonError}};
 
 use tokio::sync::mpsc::{self, error::SendError};
 
-use crate::model::world::RoomId;
+use crate::model::ids::{EntityId, RoomId};
 
 pub enum EventTarget {
-    Player(String),
-    RoomExcept(RoomId, String)
+    Entity(EntityId),
+    RoomExcept(RoomId, EntityId)
 }
 
 #[derive(Clone, Debug)]
@@ -38,11 +38,11 @@ impl From<SendError<GameEvent>> for EventBusError {
 }
 
 pub trait EventTargetResolver<T> {
-    fn resolve(&self, target: &EventTarget) -> Result<Vec<String>, T>;
+    fn resolve(&self, target: &EventTarget) -> Result<Vec<EntityId>, T>;
 }
 
 pub struct EventBus {
-    subscribers: Mutex<HashMap<String, mpsc::Sender<GameEvent>>>
+    subscribers: Mutex<HashMap<EntityId, mpsc::Sender<GameEvent>>>
 }
 
 impl EventBus {
@@ -52,31 +52,33 @@ impl EventBus {
         EventBus { subscribers: Mutex::new(HashMap::new()) }
     }
 
-    pub fn register(&self, id: &str) -> Result<mpsc::Receiver<GameEvent>, EventBusError> {
+    pub fn register(&self, id: &EntityId) -> Result<mpsc::Receiver<GameEvent>, EventBusError> {
         let (tx, rx) = mpsc::channel::<GameEvent>(Self::BUFFER_SIZE);
-        self.subscribers.lock()?.insert(id.into(), tx);
+        self.subscribers.lock()?.insert(id.clone(), tx);
 
-        tracing::debug!("Entity '{id}' registered on event bus");
+        tracing::debug!("Entity '{id:?}' registered on event bus");
         Ok(rx)
     }
 
-    pub fn unregister(&self, id: &str) -> Result<(), EventBusError> {
+    pub fn unregister(&self, id: &EntityId) -> Result<(), EventBusError> {
         self.subscribers.lock()?.remove(id);
-        tracing::debug!("Entity '{id}' un-registered from event bus");
+        tracing::debug!("Entity '{id:?}' un-registered from event bus");
         Ok(())
     }
 
-    fn resolve_targets(subscribers: &HashMap<String, mpsc::Sender<GameEvent>>, targets: &[String]) -> Vec<mpsc::Sender<GameEvent>> {
+    fn resolve_targets(subscribers: &HashMap<EntityId, mpsc::Sender<GameEvent>>, targets: &[EntityId]) -> Vec<mpsc::Sender<GameEvent>> {
         let mut senders = Vec::new();
         for target in targets {
+            tracing::debug!("Resolved target entity: {:?}", target);
             if let Some(t) = subscribers.get(target) {
+                tracing::debug!("Got sender for entity: {:?}", target);
                 senders.push(t.clone());
             }
         };
         senders
     }
 
-    pub async fn publish(&self, event: &GameEvent, targets: &[String]) -> Result<(), EventBusError> {
+    pub async fn publish(&self, event: &GameEvent, targets: &[EntityId]) -> Result<(), EventBusError> {
         tracing::debug!("Publishing event: {0:?}", event);
         let senders: Vec<_> = {
             let subscribers = self.subscribers.lock()?;
