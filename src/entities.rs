@@ -65,7 +65,8 @@ impl<T> From<PoisonError<T>> for EntityRegistryError {
 struct EntityRegistryInternal {
     entities: HashSet<EntityId>,
     positions: PositionMap,
-    names: HashMap<EntityId, Name>
+    names: HashMap<EntityId, Name>,
+    players: HashMap<EntityId, Player>
 }
 
 trait ComponentStorage {
@@ -91,7 +92,8 @@ impl EntityRegistry {
         let internal = EntityRegistryInternal {
             entities: HashSet::new(),
             positions: PositionMap::new(),
-            names: HashMap::new()
+            names: HashMap::new(),
+            players: HashMap::new()
         };
         EntityRegistry {
             internal: RwLock::new(internal)
@@ -116,6 +118,7 @@ impl EntityRegistry {
         // When new component types are added, they must be removed here.
         Position::remove(&mut internal, id);
         Name::remove(&mut internal, id);
+        Player::remove(&mut internal, id);
 
         internal.entities.remove(id);
 
@@ -158,10 +161,29 @@ impl EntityRegistry {
         f(&mut iter)
     }
 
-    pub fn online_players(&self) -> Result<HashSet<EntityId>, EntityRegistryError> {
+    #[allow(private_bounds)]
+    pub fn query2<T1, T2, R, F>(&self, f: F) -> Result<R, EntityRegistryError>
+    where
+        T1: ComponentStorage,
+        T2: ComponentStorage,
+        F: FnOnce(&mut dyn Iterator<Item = (&EntityId, (&T1, &T2))>) -> Result<R, EntityRegistryError>
+    {
         let internal = self.internal.read()?;
 
-        Ok(internal.entities.clone())
+        let storage1 = T1::storage(&internal);
+        let storage2 = T2::storage(&internal);
+
+        let mut iter: Box<dyn Iterator<Item = (&EntityId, (&T1, &T2))>> = if storage1.len() <= storage2.len() {
+            Box::new(storage1.iter()
+                .filter(|(id, _)| storage2.contains_key(id))
+                .map(|(id, c1)| (id, (c1, storage2.get(id).unwrap()))))
+        } else {
+            Box::new(storage2.iter()
+                .filter(|(id, _)| storage1.contains_key(id))
+                .map(|(id, c2)| (id, (storage1.get(id).unwrap(), c2))))
+        };
+
+        f(&mut iter)
     }
 
     /// Helper function to validate if an entity ID is valid.
@@ -262,5 +284,33 @@ impl ComponentStorage for Name {
 impl fmt::Display for Name {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.value)
+    }
+}
+
+pub struct Player;
+
+impl ComponentStorage for Player {
+    fn get<'a>(entities: &'a EntityRegistryInternal, entity: &EntityId) -> Option<&'a Self>
+    where Self: Sized
+    {
+        entities.players.get(entity)
+    }
+
+    fn remove(entities: &mut EntityRegistryInternal, entity: &EntityId)
+    where Self: Sized
+    {
+        entities.players.remove(entity);
+    }
+
+    fn update(entities: &mut EntityRegistryInternal, entity: &EntityId, component: Self)
+    where Self: Sized
+    {
+        entities.players.insert(entity.clone(), component);
+    }
+
+    fn storage(entities: &EntityRegistryInternal) -> &HashMap<EntityId, Self>
+    where Self: Sized
+    {
+        &entities.players
     }
 }

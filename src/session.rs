@@ -6,9 +6,9 @@ use tokio::io::{AsyncWriteExt, AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc;
 
 use crate::command::{Command, CommandExecutionError, CommandParseError, CommandResult, handle_command};
-use crate::entities::{EntityRegistry, EntityRegistryError, Name, Position};
+use crate::entities::{EntityRegistry, EntityRegistryError, Name, Player, Position};
 use crate::event::{EventBus, EventBusError, EventTargetResolver, GameEvent};
-use crate::model::ids::{EntityId, RoomId};
+use crate::model::ids::EntityId;
 use crate::model::world::{World};
 use crate::db::{self, DatabaseError};
 use crate::password::{self, PasswordError};
@@ -80,6 +80,7 @@ impl SessionContext {
         tracing::debug!("Session started for player {username} (id: {id:?})");
 
         let id = entities.spawn(id)?;
+        entities.update_component(&id, Player)?;
         entities.update_component(&id, position)?;
         entities.update_component(&id, Name { value: username })?;
 
