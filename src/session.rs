@@ -6,12 +6,13 @@ use tokio::io::{AsyncWriteExt, AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc;
 
 use crate::command::{Command, CommandExecutionError, CommandParseError, CommandResult, handle_command};
-use crate::entities::{EntityRegistry, EntityRegistryError, Name, Persistable, Position};
+use crate::entities::{EntityRegistry, EntityRegistryError, Name, Position};
 use crate::event::{EventBus, EventBusError, EventTargetResolver, GameEvent};
 use crate::model::ids::{EntityId, RoomId};
 use crate::model::world::{World};
 use crate::db::{self, DatabaseError};
 use crate::password::{self, PasswordError};
+use crate::persistence;
 
 #[derive(Debug)]
 pub enum SessionError {
@@ -208,7 +209,7 @@ async fn run_internal(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedR
         }
     };
 
-    let position = match Position::load(&account.id, &pool).await? {
+    let position = match persistence::load_position(&account.id, &pool).await? {
         Some(p) => p,
         None => Position { room: RoomId::new(0) }
     };

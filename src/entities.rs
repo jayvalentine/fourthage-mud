@@ -1,9 +1,7 @@
 use core::fmt;
 use std::{collections::{HashMap, HashSet}, sync::{PoisonError, RwLock}};
 
-use sqlx::PgPool;
-
-use crate::{db::{self, DatabaseError}, event::{EventTarget, EventTargetResolver}, model::ids::{RoomId, EntityId}};
+use crate::{event::{EventTarget, EventTargetResolver}, model::ids::{RoomId, EntityId}};
 
 struct PositionMap {
     position_by_id: HashMap<EntityId, Position>,
@@ -81,14 +79,6 @@ trait ComponentStorage {
     where Self: Sized;
 
     fn storage(entities: &EntityRegistryInternal) -> &HashMap<EntityId, Self>
-    where Self: Sized;
-}
-
-pub trait Persistable {
-    async fn save(entity: &EntityId, component: &Self, pool: &PgPool) -> Result<(), DatabaseError>
-    where Self: Sized;
-
-    async fn load(entity: &EntityId, pool: &PgPool) -> Result<Option<Self>, DatabaseError>
     where Self: Sized;
 }
 
@@ -229,20 +219,6 @@ impl ComponentStorage for Position {
     where Self: Sized
     {
         &entities.positions.position_by_id
-    }
-}
-
-impl Persistable for Position {
-    async fn save(entity: &EntityId, component: &Self, pool: &PgPool) -> Result<(), DatabaseError>
-    where Self: Sized
-    {
-        db::update_position(pool, entity, &component.room).await
-    }
-
-    async fn load(entity: &EntityId, pool: &PgPool) -> Result<Option<Self>, DatabaseError>
-    where Self: Sized
-    {
-        db::get_position(pool, entity).await.map(|o| o.map(|id| Position { room: id }))
     }
 }
 

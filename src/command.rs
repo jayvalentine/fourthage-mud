@@ -1,4 +1,8 @@
-use crate::{entities::{EntityRegistryError, Name, Persistable, Position}, event::{Event, EventTarget, GameEvent}, model::{world::Direction, ids::{EntityId, RoomId}}, session::SessionContext};
+use crate::entities::{EntityRegistryError, Name, Position};
+use crate::event::{Event, EventTarget, GameEvent};
+use crate::model::{world::Direction, ids::{EntityId, RoomId}};
+use crate::session::SessionContext;
+use crate::persistence;
 
 pub enum Command {
     Go(Direction),
@@ -128,7 +132,7 @@ async fn handle_go(context: &mut SessionContext, direction: Direction) -> Result
     let new_position = Position { room: destination_room_id.clone() };
     context.entities.update_component(&context.player_id, new_position.clone())
         .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not update position of entity '{:?}'", &context.player_id)))?;
-    Position::save(&context.player_id, &new_position, &context.pool)
+    persistence::persist_position(&context.player_id, &new_position, &context.pool)
         .await.map_err(|_| CommandExecutionError::Unrecoverable("Failed to update room ID in database".into()))?;
 
     let description = get_room_description(context, destination_room_id)?;

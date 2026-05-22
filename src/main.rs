@@ -11,6 +11,7 @@ mod db;
 mod password;
 mod event;
 mod entities;
+mod persistence;
 
 use model::world::World;
 use event::EventBus;
