@@ -209,10 +209,7 @@ async fn run_internal(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedR
         }
     };
 
-    let position = match persistence::load_position(&account.id, &pool).await? {
-        Some(p) => p,
-        None => Position { room: RoomId::new(0) }
-    };
+    let position = persistence::load_position(&account.id, &pool).await?.unwrap_or_default();
     let mut session_context = SessionContext::new(account.id, account.username, position, world, pool, event_bus, entities)?;
     welcome(writer, &session_context).await?;
 

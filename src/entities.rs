@@ -222,6 +222,12 @@ impl ComponentStorage for Position {
     }
 }
 
+impl Default for Position {
+    fn default() -> Self {
+        Position { room: RoomId::new(0) }
+    }
+}
+
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct Name {
     pub value: String
