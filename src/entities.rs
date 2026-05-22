@@ -170,10 +170,19 @@ impl EntityRegistry {
     {
         let internal = self.internal.read()?;
 
+        let storage1 = T1::storage(&internal);
         let storage2 = T2::storage(&internal);
-        let iter = T1::storage(&internal).iter();
-        let mut iter = iter.filter(|(id, _)| storage2.contains_key(id))
-                           .map(|(id, c1)| (id, (c1, storage2.get(id).unwrap())));
+
+        let mut iter: Box<dyn Iterator<Item = (&EntityId, (&T1, &T2))>> = if storage1.len() <= storage2.len() {
+            Box::new(storage1.iter()
+                .filter(|(id, _)| storage2.contains_key(id))
+                .map(|(id, c1)| (id, (c1, storage2.get(id).unwrap()))))
+        } else {
+            Box::new(storage2.iter()
+                .filter(|(id, _)| storage1.contains_key(id))
+                .map(|(id, c2)| (id, (storage1.get(id).unwrap(), c2))))
+        };
+
         f(&mut iter)
     }
 
