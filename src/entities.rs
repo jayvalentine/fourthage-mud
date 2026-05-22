@@ -161,6 +161,22 @@ impl EntityRegistry {
         f(&mut iter)
     }
 
+    #[allow(private_bounds)]
+    pub fn query2<T1, T2, R, F>(&self, f: F) -> Result<R, EntityRegistryError>
+    where
+        T1: ComponentStorage,
+        T2: ComponentStorage,
+        F: FnOnce(&mut dyn Iterator<Item = (&EntityId, (&T1, &T2))>) -> Result<R, EntityRegistryError>
+    {
+        let internal = self.internal.read()?;
+
+        let storage2 = T2::storage(&internal);
+        let iter = T1::storage(&internal).iter();
+        let mut iter = iter.filter(|(id, _)| storage2.contains_key(id))
+                           .map(|(id, c1)| (id, (c1, storage2.get(id).unwrap())));
+        f(&mut iter)
+    }
+
     /// Helper function to validate if an entity ID is valid.
     fn validate_entity(internal: &EntityRegistryInternal, entity: &EntityId) -> Result<(), EntityRegistryError> {
         if internal.entities.contains(entity) {
