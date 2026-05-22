@@ -65,7 +65,8 @@ impl<T> From<PoisonError<T>> for EntityRegistryError {
 struct EntityRegistryInternal {
     entities: HashSet<EntityId>,
     positions: PositionMap,
-    names: HashMap<EntityId, Name>
+    names: HashMap<EntityId, Name>,
+    players: HashMap<EntityId, Player>
 }
 
 trait ComponentStorage {
@@ -91,7 +92,8 @@ impl EntityRegistry {
         let internal = EntityRegistryInternal {
             entities: HashSet::new(),
             positions: PositionMap::new(),
-            names: HashMap::new()
+            names: HashMap::new(),
+            players: HashMap::new()
         };
         EntityRegistry {
             internal: RwLock::new(internal)
@@ -116,6 +118,7 @@ impl EntityRegistry {
         // When new component types are added, they must be removed here.
         Position::remove(&mut internal, id);
         Name::remove(&mut internal, id);
+        Player::remove(&mut internal, id);
 
         internal.entities.remove(id);
 
@@ -156,12 +159,6 @@ impl EntityRegistry {
 
         let mut iter = T::storage(&internal).iter();
         f(&mut iter)
-    }
-
-    pub fn online_players(&self) -> Result<HashSet<EntityId>, EntityRegistryError> {
-        let internal = self.internal.read()?;
-
-        Ok(internal.entities.clone())
     }
 
     /// Helper function to validate if an entity ID is valid.
@@ -262,5 +259,33 @@ impl ComponentStorage for Name {
 impl fmt::Display for Name {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.value)
+    }
+}
+
+pub struct Player;
+
+impl ComponentStorage for Player {
+    fn get<'a>(entities: &'a EntityRegistryInternal, entity: &EntityId) -> Option<&'a Self>
+    where Self: Sized
+    {
+        entities.players.get(entity)
+    }
+
+    fn remove(entities: &mut EntityRegistryInternal, entity: &EntityId)
+    where Self: Sized
+    {
+        entities.players.remove(entity);
+    }
+
+    fn update(entities: &mut EntityRegistryInternal, entity: &EntityId, component: Self)
+    where Self: Sized
+    {
+        entities.players.insert(entity.clone(), component);
+    }
+
+    fn storage(entities: &EntityRegistryInternal) -> &HashMap<EntityId, Self>
+    where Self: Sized
+    {
+        &entities.players
     }
 }

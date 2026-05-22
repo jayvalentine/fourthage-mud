@@ -1,4 +1,4 @@
-use crate::entities::{EntityRegistryError, Name, Position};
+use crate::entities::{EntityRegistryError, Name, Player, Position};
 use crate::event::{Event, EventTarget, GameEvent};
 use crate::model::{world::Direction, ids::{EntityId, RoomId}};
 use crate::session::SessionContext;
@@ -163,16 +163,17 @@ fn handle_say(context: &SessionContext, sentence: &str) -> Result<CommandResult,
 }
 
 fn handle_who(context: &SessionContext) -> Result<CommandResult, CommandExecutionError> {
-    let online = context.entities.online_players()
+    let online: Vec<EntityId> = context.entities.query::<Player, _, _>(|iter| Ok(iter.map(|(e, _)| e.clone()).collect()))
         .map_err(|_| CommandExecutionError::Unrecoverable("Could not get online player list".into()))?;
-
-    let online: Vec<&EntityId> = online.iter()
-        .filter(|p| **p != context.player_id).collect();
 
     let mut strings: Vec<String> = Vec::new();
     for e in online {
-        let name: Name = context.entities.get_component(e)?.unwrap();
-        strings.push(name.to_string());
+        if e == context.player_id {
+            continue;
+        }
+
+        let name: Name = context.entities.get_component(&e)?.unwrap();
+        strings.push(format!("    {name}"));
     }
     strings.sort();
 
