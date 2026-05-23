@@ -44,7 +44,7 @@ pub async fn create_account(pool: &PgPool, username: &str, password_hash: &str) 
 pub async fn update_position(pool: &PgPool, id: &EntityId, room_id: &RoomId) -> Result<(), DatabaseError> {
     sqlx::query!(
         "UPDATE positions SET room_id = $1 WHERE entity_id = $2",
-        room_id.value(),
+        room_id.uuid(),
         id.value()
     ).execute(pool).await?;
     Ok(())
@@ -57,7 +57,7 @@ pub async fn get_position(pool: &PgPool, id: &EntityId) -> Result<Option<RoomId>
     ).fetch_optional(pool).await?;
 
     match room {
-        Some(id) => Ok(Some(RoomId::new(id.room_id))),
+        Some(id) => Ok(Some(RoomId::from_uuid(id.room_id))),
         None => Ok(None)
     }
 }

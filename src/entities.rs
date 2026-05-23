@@ -1,6 +1,8 @@
 use core::fmt;
 use std::{collections::{HashMap, HashSet}, sync::{PoisonError, RwLock}};
 
+use uuid::uuid;
+
 use crate::{event::{EventTarget, EventTargetResolver}, model::ids::{RoomId, EntityId}};
 
 struct PositionMap {
@@ -246,7 +248,7 @@ impl ComponentStorage for Position {
 
 impl Default for Position {
     fn default() -> Self {
-        Position { room: RoomId::new(0) }
+        Position { room: RoomId::from_uuid(uuid!("019e5690-0757-7256-97c1-a403f4d347ca")) }
     }
 }
 

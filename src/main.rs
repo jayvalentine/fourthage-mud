@@ -49,8 +49,8 @@ async fn main() -> Result<(), AppError> {
        AppError::InitialisationError 
     })?;
 
-    let rooms = data::get_rooms(&format!("{data_path}/rooms/rooms.json")).map_err(|e| {
-        tracing::error!("Error loading room data: {e}");
+    let rooms = data::get_rooms(&format!("{data_path}/rooms/nrath.rooms")).map_err(|e| {
+        tracing::error!("Error loading room data: {e:?}");
         AppError::InitialisationError
     })?;
 

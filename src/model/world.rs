@@ -1,9 +1,10 @@
 use std::{collections::HashMap, fmt};
 use serde::Deserialize;
+use serde::de::Error;
 
 use super::ids::RoomId;
 
-#[derive(Clone, Copy, Hash, PartialEq, Eq, Deserialize, Debug)]
+#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
 pub enum Direction {
     North,
     South,
@@ -22,9 +23,25 @@ impl fmt::Display for Direction {
     }
 }
 
+impl<'de> Deserialize<'de> for Direction {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>
+    {
+        let s = String::deserialize(deserializer)?;
+        match s.as_str() {
+            "north" => Ok(Direction::North),
+            "south" => Ok(Direction::South),
+            "east" => Ok(Direction::East),
+            "west" => Ok(Direction::West),
+            invalid => Err(D::Error::custom(format!("Invalid direction: {invalid}")))
+        }
+    }
+}
+
 #[derive(Deserialize, Debug)]
 pub struct Room {
-    id: RoomId,
+    id: String,
     name: String,
     description: String,
     exits: HashMap<Direction, RoomId>
@@ -53,9 +70,7 @@ pub struct World {
 }
 
 impl World {
-    pub fn new(rooms: Vec<Room>) -> World {
-        let rooms: HashMap<RoomId, Room> = rooms.into_iter().map(|room| (room.id.clone(), room)).collect();
-
+    pub fn new(rooms: HashMap<RoomId, Room>) -> World {
         World { rooms }
     }
 
