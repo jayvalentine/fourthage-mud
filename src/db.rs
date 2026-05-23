@@ -25,7 +25,7 @@ pub async fn get_account(pool: &PgPool, username: &str) -> Result<Option<Account
     ).fetch_optional(pool).await?;
 
     match account {
-        Some(row) => Ok(Some(AccountRow { id: EntityId::new(row.id), username: row.username, password_hash: row.password_hash })),
+        Some(row) => Ok(Some(AccountRow { id: EntityId::from_uuid(row.id), username: row.username, password_hash: row.password_hash })),
         None => Ok(None)
     }
 }
@@ -38,14 +38,14 @@ pub async fn create_account(pool: &PgPool, username: &str, password_hash: &str) 
         password_hash
     ).fetch_one(pool).await?;
 
-    Ok(AccountRow { id: EntityId::new(row.id), username: row.username, password_hash: row.password_hash })
+    Ok(AccountRow { id: EntityId::from_uuid(row.id), username: row.username, password_hash: row.password_hash })
 }
 
 pub async fn update_position(pool: &PgPool, id: &EntityId, room_id: &RoomId) -> Result<(), DatabaseError> {
     sqlx::query!(
         "UPDATE positions SET room_id = $1 WHERE entity_id = $2",
-        room_id.uuid(),
-        id.value()
+        room_id.as_uuid(),
+        id.as_uuid()
     ).execute(pool).await?;
     Ok(())
 }
@@ -53,7 +53,7 @@ pub async fn update_position(pool: &PgPool, id: &EntityId, room_id: &RoomId) -> 
 pub async fn get_position(pool: &PgPool, id: &EntityId) -> Result<Option<RoomId>, DatabaseError> {
     let room = sqlx::query!(
         "SELECT room_id FROM positions WHERE entity_id = $1",
-        id.value()
+        id.as_uuid()
     ).fetch_optional(pool).await?;
 
     match room {

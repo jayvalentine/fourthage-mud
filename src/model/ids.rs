@@ -4,11 +4,11 @@ use uuid::Uuid;
 pub struct EntityId(Uuid);
 
 impl EntityId {
-    pub fn new(id: Uuid) -> EntityId {
+    pub fn from_uuid(id: Uuid) -> EntityId {
         EntityId(id)
     }
 
-    pub fn value(&self) -> Uuid {
+    pub fn as_uuid(&self) -> Uuid {
         self.0
     }
 }
@@ -17,7 +17,7 @@ impl EntityId {
 pub struct RoomId(EntityId);
 
 impl RoomId {
-    pub fn new(id: EntityId) -> RoomId {
+    pub fn from_entity(id: EntityId) -> RoomId {
         RoomId(id)
     }
 
@@ -25,11 +25,11 @@ impl RoomId {
         RoomId(EntityId(id))
     }
 
-    pub fn value(&self) -> EntityId {
+    pub fn as_entity(&self) -> EntityId {
         self.0
     }
 
-    pub fn uuid(&self) -> Uuid {
-        self.0.0
+    pub fn as_uuid(&self) -> Uuid {
+        self.0.as_uuid()
     }
 }
