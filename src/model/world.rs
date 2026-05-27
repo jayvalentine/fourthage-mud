@@ -101,9 +101,13 @@ impl<T> From<PoisonError<T>> for WorldError {
     }
 }
 
+struct WorldInner {
+    rooms: HashMap<RoomId, Arc<Room>>,
+    aliases: HashMap<String, RoomId>
+}
+
 pub struct World {
-    rooms: RwLock<HashMap<RoomId, Arc<Room>>>,
-    aliases: RwLock<HashMap<String, RoomId>>
+    inner: RwLock<WorldInner>
 }
 
 impl World {
@@ -116,25 +120,32 @@ impl World {
         let rooms = rooms.into_iter().map(|(id, room)| (id, Arc::new(room))).collect();
 
         World {
-            rooms: RwLock::new(rooms),
-            aliases: RwLock::new(aliases)
+            inner: RwLock::new(WorldInner {
+                rooms,
+                aliases
+            })
         }
     }
 
     pub fn get_room(&self, id: &RoomId) -> Result<Option<Arc<Room>>, WorldError> {
-        let read = self.rooms.read()?;
-        let room = read.get(id);
+        let read = self.inner.read()?;
+        let room = read.rooms.get(id);
         Ok(room.map(|r| r.clone()))
     }
 
     pub fn update_room(&self, id: RoomId, room: Room) -> Result<(), WorldError> {
-        let mut write = self.rooms.write()?;
-        write.insert(id, Arc::new(room));
+        let mut write = self.inner.write()?;
+        let new_alias = room.alias.clone();
+        if let Some(old_room) = write.rooms.insert(id, Arc::new(room)) {
+            write.aliases.remove(&old_room.alias);
+        }
+        write.aliases.insert(new_alias, id.clone());
         Ok(())
     }
 
-    pub fn rooms(&self) -> Result<RwLockReadGuard<HashMap<RoomId, Arc<Room>>>, WorldError> {
-        Ok(self.rooms.read()?)
+    pub fn rooms(&self) -> Result<HashMap<RoomId, Arc<Room>>, WorldError> {
+        let rooms = self.inner.read()?.rooms.clone();
+        Ok(rooms)
     }
 
     pub fn default_room_id() -> RoomId {

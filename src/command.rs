@@ -285,7 +285,7 @@ fn handle_save(context: &SessionContext, target: SaveTarget, path: String) -> Re
     let response = match target {
         SaveTarget::World => {
             let rooms = context.world.rooms()?;
-            match data::save_rooms(&format!("data/{path}"), rooms.deref()) {
+            match data::save_rooms(&format!("data/{path}"), &rooms) {
                 Ok(_) => format!("World saved to '{path}'"),
                 Err(e) => format!("Could not save world to '{path}': {e:?}")
             }
