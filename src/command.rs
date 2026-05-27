@@ -1,8 +1,6 @@
-use std::ops::Deref;
-
 use crate::entities::{EntityRegistryError, Name, Player, Position};
 use crate::event::{Event, EventTarget, GameEvent};
-use crate::model::world::{Room, WorldError};
+use crate::model::world::Room;
 use crate::model::{world::Direction, ids::{EntityId, RoomId}};
 use crate::session::SessionContext;
 use crate::{data, persistence};
@@ -74,14 +72,6 @@ impl From<EntityRegistryError> for CommandExecutionError {
     fn from(value: EntityRegistryError) -> Self {
         match value {
             _ => CommandExecutionError::Unrecoverable("Entity registry error".into())
-        }
-    }
-}
-
-impl From<WorldError> for CommandExecutionError {
-    fn from(value: WorldError) -> Self {
-        match value {
-            WorldError::InvalidMutex => CommandExecutionError::Unrecoverable("Invalid world mutex".into())
         }
     }
 }
@@ -170,7 +160,7 @@ fn get_current_position(context: &SessionContext) -> Result<Position, CommandExe
 }
 
 fn get_room_description(context: &SessionContext, id: &RoomId) -> Result<String, CommandExecutionError> {
-    let current_room = context.world.get_room(id)?
+    let current_room = context.world.get_room(id)
         .ok_or(CommandExecutionError::Unrecoverable("Could not retrieve room based on current room ID".into()))?;
 
     let room_name = current_room.name();
@@ -184,7 +174,7 @@ fn get_room_description(context: &SessionContext, id: &RoomId) -> Result<String,
 
 async fn handle_go(context: &mut SessionContext, direction: Direction) -> Result<CommandResult, CommandExecutionError> {
     let position = get_current_position(context)?;
-    let current_room = context.world.get_room(&position.room)?
+    let current_room = context.world.get_room(&position.room)
         .ok_or(CommandExecutionError::Unrecoverable("Could not retrieve room based on current room ID".into()))?;
 
     let destination_room_id = match current_room.get_destination(direction) {
@@ -263,13 +253,13 @@ fn handle_edit(context: &SessionContext, field: EditField, content: String) -> R
     }
 
     let position = get_current_position(context)?;
-    let response = if let Some(room) = context.world.get_room(&position.room)? {
+    let response = if let Some(room) = context.world.get_room(&position.room) {
         let mut updated = Room::clone(&room);
         match field {
             EditField::Description => { updated.set_description(content); },
             EditField::Name => { updated.set_name(content); }
         }
-        context.world.update_room(position.room.clone(), updated)?;
+        context.world.update_room(position.room.clone(), updated);
         CommandResult::Query(QueryResult { response: "Updated room.".into() })
     } else {
         CommandResult::Query(QueryResult { response: format!("Cannot update room '{0:?}'", position.room) })
@@ -284,7 +274,7 @@ fn handle_save(context: &SessionContext, target: SaveTarget, path: String) -> Re
 
     let response = match target {
         SaveTarget::World => {
-            let rooms = context.world.rooms()?;
+            let rooms = context.world.rooms();
             match data::save_rooms(&format!("data/{path}"), &rooms) {
                 Ok(_) => format!("World saved to '{path}'"),
                 Err(e) => format!("Could not save world to '{path}': {e:?}")

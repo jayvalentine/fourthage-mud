@@ -1,4 +1,6 @@
-use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard};
+use std::sync::Arc;
+use parking_lot::lock_api::MappedRwLockReadGuard;
+use parking_lot::{RawRwLock, RwLock, RwLockReadGuard};
 use std::{collections::HashMap, fmt};
 use serde::{Deserialize, Serialize};
 use serde::de::Error;
@@ -91,16 +93,6 @@ impl Room {
     }
 }
 
-pub enum WorldError {
-    InvalidMutex
-}
-
-impl<T> From<PoisonError<T>> for WorldError {
-    fn from(_: PoisonError<T>) -> Self {
-        WorldError::InvalidMutex
-    }
-}
-
 struct WorldInner {
     rooms: HashMap<RoomId, Arc<Room>>,
     aliases: HashMap<String, RoomId>
@@ -127,25 +119,23 @@ impl World {
         }
     }
 
-    pub fn get_room(&self, id: &RoomId) -> Result<Option<Arc<Room>>, WorldError> {
-        let read = self.inner.read()?;
+    pub fn get_room(&self, id: &RoomId) -> Option<Arc<Room>> {
+        let read = self.inner.read();
         let room = read.rooms.get(id);
-        Ok(room.map(|r| r.clone()))
+        room.map(|r| r.clone())
     }
 
-    pub fn update_room(&self, id: RoomId, room: Room) -> Result<(), WorldError> {
-        let mut write = self.inner.write()?;
+    pub fn update_room(&self, id: RoomId, room: Room) {
+        let mut write = self.inner.write();
         let new_alias = room.alias.clone();
         if let Some(old_room) = write.rooms.insert(id, Arc::new(room)) {
             write.aliases.remove(&old_room.alias);
         }
         write.aliases.insert(new_alias, id.clone());
-        Ok(())
     }
 
-    pub fn rooms(&self) -> Result<HashMap<RoomId, Arc<Room>>, WorldError> {
-        let rooms = self.inner.read()?.rooms.clone();
-        Ok(rooms)
+    pub fn rooms(&self) -> MappedRwLockReadGuard<RawRwLock, HashMap<RoomId, Arc<Room>>> {
+        RwLockReadGuard::map(self.inner.read(), |inner| &inner.rooms)
     }
 
     pub fn default_room_id() -> RoomId {
