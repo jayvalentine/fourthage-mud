@@ -68,6 +68,7 @@ impl From<EntityRegistryError> for SessionError {
 
 pub struct SessionContext {
     pub player_id: EntityId,
+    pub is_admin: bool,
     pub world: Arc<World>,
     pub pool: PgPool,
     pub event_bus: Arc<EventBus>,
@@ -76,7 +77,7 @@ pub struct SessionContext {
 }
 
 impl SessionContext {
-    pub fn new(id: EntityId, username: String, position: Position, world: Arc<World>, pool: PgPool, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<SessionContext, SessionError> {
+    pub fn new(id: EntityId, username: String, is_admin: bool, position: Position, world: Arc<World>, pool: PgPool, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<SessionContext, SessionError> {
         tracing::debug!("Session started for player {username} (id: {id:?})");
 
         let id = entities.spawn(id)?;
@@ -86,7 +87,7 @@ impl SessionContext {
 
         let receiver = event_bus.register(&id)?;
 
-        Ok(SessionContext { player_id: id, world, pool, event_bus, receiver, entities })
+        Ok(SessionContext { player_id: id, is_admin, world, pool, event_bus, receiver, entities })
     }
 
     pub fn player_name(&self) -> Result<Name, SessionError> {
@@ -148,7 +149,12 @@ async fn get_initial_password(writer: &mut OwnedWriteHalf, reader: &mut BufReade
 /// Welcome the given player to the game.
 async fn welcome(writer: &mut OwnedWriteHalf, context: &SessionContext) -> Result<(), SessionError> {
     let name = &context.player_name()?;
-    send(writer, &format!("Welcome {name}!")).await
+    let message = if context.is_admin {
+        format!("Welcome {name} (ADMIN)!")
+    } else {
+        format!("Welcome {name}!")
+    };
+    send(writer, &message).await
 }
 
 async fn handle_input(session_context: &mut SessionContext, input: &str) -> Result<Option<String>, SessionError> {
@@ -214,7 +220,7 @@ async fn run_internal(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedR
         Some(pos) => pos,
         None => Position { room: World::default_room_id() }
     };
-    let mut session_context = SessionContext::new(account.id, account.username, position, world, pool, event_bus, entities)?;
+    let mut session_context = SessionContext::new(account.id, account.username, account.is_admin, position, world, pool, event_bus, entities)?;
     welcome(writer, &session_context).await?;
 
     loop {
