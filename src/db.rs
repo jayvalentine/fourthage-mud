@@ -2,6 +2,7 @@ use sqlx::{PgPool};
 
 use crate::model::ids::{EntityId, RoomId};
 
+#[derive(Debug)]
 pub enum DatabaseError {
     SqlxError(sqlx::Error)
 }
@@ -43,9 +44,10 @@ pub async fn create_account(pool: &PgPool, username: &str, password_hash: &str) 
 
 pub async fn update_position(pool: &PgPool, id: &EntityId, room_id: &RoomId) -> Result<(), DatabaseError> {
     sqlx::query!(
-        "UPDATE positions SET room_id = $1 WHERE entity_id = $2",
-        room_id.as_uuid(),
-        id.as_uuid()
+        "INSERT INTO positions (entity_id, room_id) VALUES ($1, $2)
+         ON CONFLICT(entity_id) DO UPDATE SET room_id = $2",
+        id.as_uuid(),
+        room_id.as_uuid()
     ).execute(pool).await?;
     Ok(())
 }

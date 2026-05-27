@@ -215,7 +215,7 @@ impl EventTargetResolver<EntityRegistryError> for EntityRegistry {
     }
 }
 
-#[derive(Clone, Hash, PartialEq, Eq)]
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub struct Position {
     pub room: RoomId
 }
@@ -243,12 +243,6 @@ impl ComponentStorage for Position {
     where Self: Sized
     {
         &entities.positions.position_by_id
-    }
-}
-
-impl Default for Position {
-    fn default() -> Self {
-        Position { room: RoomId::from_uuid(uuid!("019e5690-0757-7256-97c1-a403f4d347ca")) }
     }
 }
 

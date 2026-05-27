@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO positions (entity_id, room_id) VALUES ($1, $2)\n         ON CONFLICT(entity_id) DO UPDATE SET room_id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9a69b8d29fafe99d74275914987a0ed4ecf00b43048751db39ad343dee9178f4"
+}

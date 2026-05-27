@@ -1,6 +1,7 @@
 use std::{collections::HashMap, fmt};
 use serde::Deserialize;
 use serde::de::Error;
+use uuid::uuid;
 
 use super::ids::RoomId;
 
@@ -76,5 +77,9 @@ impl World {
 
     pub fn get_room(&self, id: &RoomId) -> Option<&Room> {
         self.rooms.get(id)
+    }
+
+    pub fn default_room_id() -> RoomId {
+        RoomId::from_uuid(uuid!("019e5690-0757-7256-97c1-a403f4d347ca"))
     }
 }
