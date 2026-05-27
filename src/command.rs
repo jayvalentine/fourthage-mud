@@ -1,5 +1,6 @@
 use crate::entities::{EntityRegistryError, Name, Player, Position};
 use crate::event::{Event, EventTarget, GameEvent};
+use crate::model::world::WorldError;
 use crate::model::{world::Direction, ids::{EntityId, RoomId}};
 use crate::session::SessionContext;
 use crate::persistence;
@@ -60,6 +61,14 @@ impl From<EntityRegistryError> for CommandExecutionError {
     }
 }
 
+impl From<WorldError> for CommandExecutionError {
+    fn from(value: WorldError) -> Self {
+        match value {
+            WorldError::InvalidMutex => CommandExecutionError::Unrecoverable("Invalid world mutex".into())
+        }
+    }
+}
+
 impl Command {
     fn parse_direction(s: &str) -> Option<Direction> {
         match s {
@@ -105,7 +114,7 @@ impl Command {
 }
 
 fn get_room_description(context: &SessionContext, id: &RoomId) -> Result<String, CommandExecutionError> {
-    let current_room = context.world.get_room(id)
+    let current_room = context.world.get_room(id)?
         .ok_or(CommandExecutionError::Unrecoverable("Could not retrieve room based on current room ID".into()))?;
 
     let room_name = current_room.name();
@@ -121,7 +130,7 @@ async fn handle_go(context: &mut SessionContext, direction: Direction) -> Result
     let position = context.entities.get_component::<Position>(&context.player_id)
         .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {:?}", &context.player_id)))?
         .ok_or(CommandExecutionError::Unrecoverable(format!("Entity {:?} has no position component", &context.player_id)))?;
-    let current_room = context.world.get_room(&position.room)
+    let current_room = context.world.get_room(&position.room)?
         .ok_or(CommandExecutionError::Unrecoverable("Could not retrieve room based on current room ID".into()))?;
 
     let destination_room_id = match current_room.get_destination(direction) {

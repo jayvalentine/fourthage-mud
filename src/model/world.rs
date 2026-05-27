@@ -1,3 +1,4 @@
+use std::sync::{Arc, PoisonError, RwLock};
 use std::{collections::HashMap, fmt};
 use serde::Deserialize;
 use serde::de::Error;
@@ -42,7 +43,7 @@ impl<'de> Deserialize<'de> for Direction {
 
 #[derive(Deserialize, Debug)]
 pub struct Room {
-    id: String,
+    alias: String,
     name: String,
     description: String,
     exits: HashMap<Direction, RoomId>
@@ -66,17 +67,40 @@ impl Room {
     }
 }
 
+pub enum WorldError {
+    InvalidMutex
+}
+
+impl<T> From<PoisonError<T>> for WorldError {
+    fn from(value: PoisonError<T>) -> Self {
+        WorldError::InvalidMutex
+    }
+}
+
 pub struct World {
-    rooms: HashMap<RoomId, Room>
+    rooms: RwLock<HashMap<RoomId, Arc<Room>>>,
+    aliases: RwLock<HashMap<String, RoomId>>
 }
 
 impl World {
     pub fn new(rooms: HashMap<RoomId, Room>) -> World {
-        World { rooms }
+        let mut aliases = HashMap::new();
+        for (id, room) in rooms.iter() {
+            aliases.insert(room.alias.clone(), id.clone());
+        }
+
+        let rooms = rooms.into_iter().map(|(id, room)| (id, Arc::new(room))).collect();
+
+        World {
+            rooms: RwLock::new(rooms),
+            aliases: RwLock::new(aliases)
+        }
     }
 
-    pub fn get_room(&self, id: &RoomId) -> Option<&Room> {
-        self.rooms.get(id)
+    pub fn get_room(&self, id: &RoomId) -> Result<Option<Arc<Room>>, WorldError> {
+        let read = self.rooms.read()?;
+        let room = read.get(id);
+        Ok(room.map(|r| r.clone()))
     }
 
     pub fn default_room_id() -> RoomId {
