@@ -1,0 +1,284 @@
+bookshop:
+  description: A cozy bookshop, with shelves lining each wall. The owner is sitting
+    in a comfortable chair by the entrance, leafing through a small book.
+  exits:
+    south: road_east_1
+    west: road_north_1
+  name: Bookshop
+cowpen:
+  description: A small cowpen, with drystone walls built using local stone. Some of
+    the stones have been knocked over.
+  exits:
+    east: road_north_3
+    north: farmhouse_2
+  name: Cowpen
+farmhouse_1:
+  description: A modest farmhouse.
+  exits:
+    north: road_east_4
+    west: field_1
+  name: Modest Farmhouse
+farmhouse_2:
+  description: A large farmhouse.
+  exits:
+    east: road_north_4
+    south: cowpen
+  name: Large Farmhouse
+field_1:
+  description: A field, bordered by drystone walls.
+  exits:
+    east: farmhouse_1
+    north: road_east_3
+    south: pond
+  name: Field
+grove:
+  description: A clearing in the forest. Light streams in through the canopy. Wild
+    flowers grow plentifully here.
+  exits:
+    east: stream_1
+    south: seer_hut
+  name: Grove
+herb_garden:
+  description: A small herb garden, with planters full of all the herbs a cook could
+    want.
+  exits:
+    east: inn_garden
+    south: stream_3
+  name: Herb Garden
+house_1:
+  description: A house.
+  exits:
+    east: road_north_1
+    south: market_west
+    west: workshop
+  name: House
+house_2:
+  description: A house.
+  exits:
+    north: market_west
+  name: House
+house_3:
+  description: A house.
+  exits:
+    north: road_west_1
+  name: House
+house_4:
+  description: A house.
+  exits:
+    east: road_north_2
+  name: House
+house_5:
+  description: A house.
+  exits:
+    west: road_north_2
+  name: House
+inn:
+  description: A small village inn. In the centre of the room is a roaring hearth.
+    A handful of stools rest against the bar. On the other side of the room, tables
+    are laid out for eating.
+  exits:
+    east: inn_kitchen
+    north: market_east
+    south: inn_garden
+  name: The Speared Fish
+inn_garden:
+  description: A sunny garden behind the village inn, enclosed by a wooden fence.
+    There are a number of benches here.
+  exits:
+    north: inn
+    south: stream_4
+    west: herb_garden
+  name: The Speared Fish - Garden
+inn_kitchen:
+  description: A hot kitchen. Several pots of stew are simmering over an open fire.
+    An oven smoulders in the corner.
+  exits:
+    west: inn
+  name: The Speared Fish - Kitchen
+market_east:
+  description: A small village square. Several traders have set up their stalls here.
+  exits:
+    east: road_east_1
+    north: road_north_1
+    south: inn
+    west: market_west
+  name: Market Square - East
+market_west:
+  description: A small village square. A couple of traders have set up their stalls
+    here.
+  exits:
+    east: market_east
+    north: house_1
+    south: house_2
+    west: road_west_1
+  name: Market Square - West
+orchard:
+  description: A small pear orchard.
+  exits:
+    south: road_east_3
+  name: Orchard
+pond:
+  description: A pond.
+  exits:
+    east: stream_7
+    north: field_1
+    south: stream_5
+  name: Pond
+road_east_1:
+  description: A road.
+  exits:
+    east: road_east_2
+    north: bookshop
+    west: market_east
+  name: East Road
+road_east_2:
+  description: A road.
+  exits:
+    east: road_east_3
+    west: road_east_1
+  name: East Road
+road_east_3:
+  description: A road.
+  exits:
+    east: road_east_4
+    north: orchard
+    south: field_1
+    west: road_east_2
+  name: East Road
+road_east_4:
+  description: A road.
+  exits:
+    east: road_east_5
+    south: farmhouse_1
+    west: road_east_3
+  name: East Road
+road_east_5:
+  description: A road.
+  exits:
+    south: stream_9
+    west: road_east_4
+  name: East Road
+road_north_1:
+  description: A road.
+  exits:
+    east: bookshop
+    north: road_north_2
+    south: market_east
+    west: house_1
+  name: North Road
+road_north_2:
+  description: A road.
+  exits:
+    east: house_5
+    north: road_north_3
+    south: road_north_1
+    west: house_4
+  name: North Road
+road_north_3:
+  description: A road.
+  exits:
+    north: road_north_4
+    south: road_north_2
+    west: cowpen
+  name: North Road
+road_north_4:
+  description: A road.
+  exits:
+    north: road_north_5
+    south: road_north_3
+    west: farmhouse_2
+  name: North Road
+road_north_5:
+  description: A road.
+  exits:
+    south: road_north_4
+    west: stables
+  name: North Road
+road_west_1:
+  description: A road.
+  exits:
+    east: market_west
+    south: house_3
+    west: road_west_2
+  name: West Road
+road_west_2:
+  description: A road.
+  exits:
+    east: road_west_1
+  name: West Road
+seer_hut:
+  description: A tiny hut, lit by candlelight. The smell of burning lavender wafts
+    through the room. In the centre is a table with various candles and crystals.
+  exits:
+    north: grove
+  name: Seer's Hut
+stables:
+  description: A small stable.
+  exits:
+    east: road_north_5
+  name: Stables
+stream_1:
+  description: A stream.
+  exits:
+    north: stream_2
+    west: grove
+  name: Stream
+stream_2:
+  description: A stream.
+  exits:
+    east: stream_3
+    south: stream_1
+  name: Stream
+stream_3:
+  description: A stream.
+  exits:
+    east: stream_4
+    north: herb_garden
+    west: stream_2
+  name: Stream
+stream_4:
+  description: A stream.
+  exits:
+    east: stream_5
+    north: inn_garden
+    west: stream_3
+  name: Stream
+stream_5:
+  description: A stream.
+  exits:
+    east: stream_6
+    north: pond
+    west: stream_4
+  name: Stream
+stream_6:
+  description: A stream.
+  exits:
+    north: stream_7
+    west: stream_5
+  name: Stream
+stream_7:
+  description: A stream.
+  exits:
+    east: stream_8
+    south: stream_6
+    west: pond
+  name: Stream
+stream_8:
+  description: A stream.
+  exits:
+    north: stream_9
+    west: stream_7
+  name: Stream
+stream_9:
+  description: A stream.
+  exits:
+    north: road_east_5
+    south: stream_8
+  name: Stream
+workshop:
+  description: A blacksmith's workshop. The forge bathes the room in a red glow. Tools
+    are hanging on the wall above the forge, while unfinished projects are scattered
+    on the various tables.
+  exits:
+    east: house_1
+  name: Blacksmith's Workshop

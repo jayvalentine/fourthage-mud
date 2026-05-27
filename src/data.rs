@@ -1,20 +1,16 @@
-use std::fmt;
+use std::collections::HashMap;
 
-use crate::model::world::Room;
+use serde::de::Error;
+use serde::Deserialize;
+use uuid::Uuid;
+
+use crate::model::{ids::RoomId, world::Room};
 
 #[derive(Debug)]
 pub enum DataLoadError {
     FileRead,
-    Deserialization
-}
-
-impl fmt::Display for DataLoadError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            DataLoadError::FileRead => write!(f, "Error loading data file"),
-            DataLoadError::Deserialization => write!(f, "Error deserializing data from file")
-        }
-    }
+    Deserialization,
+    UuidDeserialization
 }
 
 impl From<std::io::Error> for DataLoadError {
@@ -23,14 +19,32 @@ impl From<std::io::Error> for DataLoadError {
     }
 }
 
-impl From<serde_json::Error> for DataLoadError {
-    fn from(_: serde_json::Error) -> DataLoadError {
+impl From<serde_yaml::Error> for DataLoadError {
+    fn from(_: serde_yaml::Error) -> DataLoadError {
         DataLoadError::Deserialization
     }
 }
 
-pub fn get_rooms(file: &str) -> Result<Vec<Room>, DataLoadError> {
-    let json = std::fs::read_to_string(file)?;
-    let json: Vec<Room> = serde_json::from_str(&json)?;
-    Ok(json)
+impl From<uuid::Error> for DataLoadError {
+    fn from(_: uuid::Error) -> Self {
+        DataLoadError::UuidDeserialization
+    }
+}
+
+impl<'de> Deserialize<'de> for RoomId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>
+    {
+        let s = String::deserialize(deserializer)?;
+        let id = Uuid::parse_str(&s).map_err(|_| D::Error::custom(format!("Invalid RoomId: {s}")))?;
+        Ok(RoomId::from_uuid(id))
+    }
+}
+
+pub fn get_rooms(file: &str) -> Result<HashMap<RoomId, Room>, DataLoadError> {
+    let yaml = std::fs::read_to_string(file)?;
+    let yaml: HashMap<RoomId, Room> = serde_yaml::from_str(&yaml)?;
+
+    Ok(yaml)
 }

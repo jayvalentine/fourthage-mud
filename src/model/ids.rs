@@ -1,28 +1,35 @@
-use serde::Deserialize;
-use sqlx::types::Uuid;
+use uuid::Uuid;
 
-#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
 pub struct EntityId(Uuid);
 
 impl EntityId {
-    pub fn new(id: Uuid) -> EntityId {
+    pub fn from_uuid(id: Uuid) -> EntityId {
         EntityId(id)
     }
 
-    pub fn value(&self) -> Uuid {
+    pub fn as_uuid(&self) -> Uuid {
         self.0
     }
 }
 
-#[derive(Clone, Hash, PartialEq, Eq, Deserialize, Debug)]
-pub struct RoomId(i32);
+#[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
+pub struct RoomId(EntityId);
 
 impl RoomId {
-    pub fn new(id: i32) -> RoomId {
+    pub fn from_entity(id: EntityId) -> RoomId {
         RoomId(id)
     }
 
-    pub fn value(&self) -> i32 {
+    pub fn from_uuid(id: Uuid) -> RoomId {
+        RoomId(EntityId(id))
+    }
+
+    pub fn as_entity(&self) -> EntityId {
         self.0
+    }
+
+    pub fn as_uuid(&self) -> Uuid {
+        self.0.as_uuid()
     }
 }

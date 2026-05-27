@@ -1,6 +1,8 @@
 use core::fmt;
 use std::{collections::{HashMap, HashSet}, sync::{PoisonError, RwLock}};
 
+use uuid::uuid;
+
 use crate::{event::{EventTarget, EventTargetResolver}, model::ids::{RoomId, EntityId}};
 
 struct PositionMap {
@@ -213,7 +215,7 @@ impl EventTargetResolver<EntityRegistryError> for EntityRegistry {
     }
 }
 
-#[derive(Clone, Hash, PartialEq, Eq)]
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub struct Position {
     pub room: RoomId
 }
@@ -241,12 +243,6 @@ impl ComponentStorage for Position {
     where Self: Sized
     {
         &entities.positions.position_by_id
-    }
-}
-
-impl Default for Position {
-    fn default() -> Self {
-        Position { room: RoomId::new(0) }
     }
 }
 
