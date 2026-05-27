@@ -41,7 +41,7 @@ impl<'de> Deserialize<'de> for Direction {
     }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Clone, Deserialize, Debug)]
 pub struct Room {
     alias: String,
     name: String,
@@ -62,6 +62,10 @@ impl Room {
         &self.description
     }
 
+    pub fn set_description(&mut self, desc: String) {
+        self.description = desc;
+    }
+
     pub fn exits(&self) -> Vec<Direction> {
         self.exits.keys().copied().collect()
     }
@@ -72,7 +76,7 @@ pub enum WorldError {
 }
 
 impl<T> From<PoisonError<T>> for WorldError {
-    fn from(value: PoisonError<T>) -> Self {
+    fn from(_: PoisonError<T>) -> Self {
         WorldError::InvalidMutex
     }
 }
@@ -101,6 +105,12 @@ impl World {
         let read = self.rooms.read()?;
         let room = read.get(id);
         Ok(room.map(|r| r.clone()))
+    }
+
+    pub fn update_room(&self, id: RoomId, room: Room) -> Result<(), WorldError> {
+        let mut write = self.rooms.write()?;
+        write.insert(id, Arc::new(room));
+        Ok(())
     }
 
     pub fn default_room_id() -> RoomId {

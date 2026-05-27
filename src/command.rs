@@ -1,6 +1,6 @@
 use crate::entities::{EntityRegistryError, Name, Player, Position};
 use crate::event::{Event, EventTarget, GameEvent};
-use crate::model::world::WorldError;
+use crate::model::world::{Room, WorldError};
 use crate::model::{world::Direction, ids::{EntityId, RoomId}};
 use crate::session::SessionContext;
 use crate::persistence;
@@ -10,7 +10,16 @@ pub enum Command {
     Say(String),
     Who,
     Look,
+
+    // Admin commands
+    Edit(EditField, String),
+
+    // Session management commands
     Quit
+}
+
+pub enum EditField {
+    Description
 }
 
 pub enum CommandParseError {
@@ -107,10 +116,33 @@ impl Command {
             },
             "who" => Ok(Command::Who),
             "look" => Ok(Command::Look),
+
+            "edit" => {
+                let field = match parts.next() {
+                    Some(s) => s,
+                    None => return Err(CommandParseError::InvalidSyntax("Edit what?".into()))
+                };
+                let field = match field {
+                    "desc" | "description" => EditField::Description,
+                    s => return Err(CommandParseError::UnknownCommand(format!("Unknown edit field '{s}'")))
+                };
+                let content = parts.collect::<Vec<&str>>().join(" ");
+                if content.is_empty() {
+                    return Err(CommandParseError::InvalidSyntax("No edit content!".into()))
+                }
+                Ok(Command::Edit(field, content))
+            }
+
             "quit" => Ok(Command::Quit),
             _ => Err(CommandParseError::UnknownCommand(input.to_string())),
         }
     }
+}
+
+fn get_current_position(context: &SessionContext) -> Result<Position, CommandExecutionError> {
+    context.entities.get_component::<Position>(&context.player_id)
+        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {:?}", &context.player_id)))?
+        .ok_or(CommandExecutionError::Unrecoverable(format!("Entity {:?} has no position component", &context.player_id)))
 }
 
 fn get_room_description(context: &SessionContext, id: &RoomId) -> Result<String, CommandExecutionError> {
@@ -127,9 +159,7 @@ fn get_room_description(context: &SessionContext, id: &RoomId) -> Result<String,
 }
 
 async fn handle_go(context: &mut SessionContext, direction: Direction) -> Result<CommandResult, CommandExecutionError> {
-    let position = context.entities.get_component::<Position>(&context.player_id)
-        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {:?}", &context.player_id)))?
-        .ok_or(CommandExecutionError::Unrecoverable(format!("Entity {:?} has no position component", &context.player_id)))?;
+    let position = get_current_position(context)?;
     let current_room = context.world.get_room(&position.room)?
         .ok_or(CommandExecutionError::Unrecoverable("Could not retrieve room based on current room ID".into()))?;
 
@@ -203,12 +233,34 @@ fn handle_look(context: &SessionContext) -> Result<CommandResult, CommandExecuti
     Ok(CommandResult::Query(QueryResult { response }))
 }
 
+fn handle_edit(context: &SessionContext, field: EditField, content: String) -> Result<CommandResult, CommandExecutionError> {
+    if !context.is_admin {
+        return Ok(CommandResult::Query(QueryResult { response: "You are not authorized to do that.".into()}))
+    }
+
+    let position = get_current_position(context)?;
+    let response = if let Some(room) = context.world.get_room(&position.room)? {
+        let mut updated = Room::clone(&room);
+        match field {
+            EditField::Description => { updated.set_description(content); }
+        }
+        context.world.update_room(position.room.clone(), updated)?;
+        CommandResult::Query(QueryResult { response: "Updated room.".into() })
+    } else {
+        CommandResult::Query(QueryResult { response: format!("Cannot update room '{0:?}'", position.room) })
+    };
+    Ok(response)
+}
+
 pub async fn handle_command(context: &mut SessionContext, command: Command) -> Result<CommandResult, CommandExecutionError> {
     match command {
         Command::Go(direction) => handle_go(context, direction).await,
         Command::Say(sentence) => handle_say(context, &sentence),
         Command::Who => handle_who(context),
         Command::Look => handle_look(context),
+
+        Command::Edit(field, content) => handle_edit(context, field, content),
+
         Command::Quit => {
             let name = context.entities.get_component::<Name>(&context.player_id)
                 .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get name for entity: {:?}", context.player_id)))?
