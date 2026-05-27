@@ -82,6 +82,10 @@ impl Room {
         self.description = desc;
     }
 
+    pub fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+
     pub fn exits(&self) -> Vec<Direction> {
         self.exits.keys().copied().collect()
     }

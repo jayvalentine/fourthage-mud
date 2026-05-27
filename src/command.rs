@@ -22,7 +22,8 @@ pub enum Command {
 }
 
 pub enum EditField {
-    Description
+    Description,
+    Name
 }
 
 pub enum SaveTarget {
@@ -131,6 +132,7 @@ impl Command {
                 };
                 let field = match field {
                     "desc" | "description" => EditField::Description,
+                    "name" | "title" => EditField::Name,
                     s => return Err(CommandParseError::UnknownCommand(format!("Unknown edit field '{s}'")))
                 };
                 let content = parts.collect::<Vec<&str>>().join(" ");
@@ -264,7 +266,8 @@ fn handle_edit(context: &SessionContext, field: EditField, content: String) -> R
     let response = if let Some(room) = context.world.get_room(&position.room)? {
         let mut updated = Room::clone(&room);
         match field {
-            EditField::Description => { updated.set_description(content); }
+            EditField::Description => { updated.set_description(content); },
+            EditField::Name => { updated.set_name(content); }
         }
         context.world.update_room(position.room.clone(), updated)?;
         CommandResult::Query(QueryResult { response: "Updated room.".into() })
