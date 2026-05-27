@@ -1,9 +1,11 @@
+use std::ops::Deref;
+
 use crate::entities::{EntityRegistryError, Name, Player, Position};
 use crate::event::{Event, EventTarget, GameEvent};
 use crate::model::world::{Room, WorldError};
 use crate::model::{world::Direction, ids::{EntityId, RoomId}};
 use crate::session::SessionContext;
-use crate::persistence;
+use crate::{data, persistence};
 
 pub enum Command {
     Go(Direction),
@@ -13,6 +15,7 @@ pub enum Command {
 
     // Admin commands
     Edit(EditField, String),
+    Save(SaveTarget, String),
 
     // Session management commands
     Quit
@@ -20,6 +23,10 @@ pub enum Command {
 
 pub enum EditField {
     Description
+}
+
+pub enum SaveTarget {
+    World
 }
 
 pub enum CommandParseError {
@@ -131,6 +138,21 @@ impl Command {
                     return Err(CommandParseError::InvalidSyntax("No edit content!".into()))
                 }
                 Ok(Command::Edit(field, content))
+            },
+            "save" => {
+                let target = match parts.next() {
+                    Some(s) => s,
+                    None => return Err(CommandParseError::InvalidSyntax("Save what?".into()))
+                };
+                let target = match target {
+                    "world" => SaveTarget::World,
+                    s => return Err(CommandParseError::UnknownCommand(format!("Don't know how to save '{s}'!")))
+                };
+                let path = match parts.next() {
+                    Some(s) => s,
+                    None => return Err(CommandParseError::InvalidSyntax("Save to where?".into()))
+                };
+                Ok(Command::Save(target, path.to_string()))
             }
 
             "quit" => Ok(Command::Quit),
@@ -252,6 +274,24 @@ fn handle_edit(context: &SessionContext, field: EditField, content: String) -> R
     Ok(response)
 }
 
+fn handle_save(context: &SessionContext, target: SaveTarget, path: String) -> Result<CommandResult, CommandExecutionError> {
+    if !context.is_admin {
+        return Ok(CommandResult::Query(QueryResult { response: "You are not authorized to do that.".into()}))
+    }
+
+    let response = match target {
+        SaveTarget::World => {
+            let rooms = context.world.rooms()?;
+            match data::save_rooms(&format!("data/{path}"), rooms.deref()) {
+                Ok(_) => format!("World saved to '{path}'"),
+                Err(e) => format!("Could not save world to '{path}': {e:?}")
+            }
+        }
+    };
+
+    Ok(CommandResult::Query(QueryResult { response }))
+}
+
 pub async fn handle_command(context: &mut SessionContext, command: Command) -> Result<CommandResult, CommandExecutionError> {
     match command {
         Command::Go(direction) => handle_go(context, direction).await,
@@ -260,6 +300,7 @@ pub async fn handle_command(context: &mut SessionContext, command: Command) -> R
         Command::Look => handle_look(context),
 
         Command::Edit(field, content) => handle_edit(context, field, content),
+        Command::Save(target, path) => handle_save(context, target, path),
 
         Command::Quit => {
             let name = context.entities.get_component::<Name>(&context.player_id)

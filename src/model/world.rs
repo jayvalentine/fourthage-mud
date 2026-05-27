@@ -1,6 +1,6 @@
-use std::sync::{Arc, PoisonError, RwLock};
+use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard};
 use std::{collections::HashMap, fmt};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde::de::Error;
 use uuid::uuid;
 
@@ -41,7 +41,23 @@ impl<'de> Deserialize<'de> for Direction {
     }
 }
 
-#[derive(Clone, Deserialize, Debug)]
+impl Serialize for Direction {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer
+    {
+        let s = match self {
+            Direction::North => "north",
+            Direction::South => "south",
+            Direction::East => "east",
+            Direction::West => "west"
+        };
+        let s = s.to_string();
+        String::serialize(&s, serializer)
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Room {
     alias: String,
     name: String,
@@ -111,6 +127,10 @@ impl World {
         let mut write = self.rooms.write()?;
         write.insert(id, Arc::new(room));
         Ok(())
+    }
+
+    pub fn rooms(&self) -> Result<RwLockReadGuard<HashMap<RoomId, Arc<Room>>>, WorldError> {
+        Ok(self.rooms.read()?)
     }
 
     pub fn default_room_id() -> RoomId {
