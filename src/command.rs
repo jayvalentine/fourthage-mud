@@ -18,6 +18,7 @@ pub enum Command {
     Save(SaveTarget, String),
     Link(Direction, String),
     Create(Direction, String),
+    RoomInfo,
 
     // Session management commands
     Quit
@@ -194,6 +195,7 @@ impl Command {
                 };
                 Ok(Command::Create(direction, alias.to_string()))
             },
+            "roominfo" => Ok(Command::RoomInfo),
 
             "quit" => Ok(Command::Quit),
             _ => Err(CommandParseError::UnknownCommand(input.to_string())),
@@ -406,6 +408,34 @@ fn handle_create(context: &SessionContext, direction: Direction, target: String)
     Ok(CommandResult::Query(QueryResult { response }))
 }
 
+fn handle_roominfo(context: &SessionContext) -> Result<CommandResult, CommandExecutionError> {
+    if !context.is_admin {
+        return Ok(CommandResult::Unauthorized)
+    }
+
+    let position = get_current_position(context)?;
+    let current_room = match context.world.get_room(&position.room) {
+        Some(r) => r,
+        None => return Ok(CommandResult::Query(format!("Could not get current room (ID: {0})", position.room).into()))
+    };
+
+    let mut exits: Vec<String> = Vec::new();
+    for exit in current_room.exits() {
+        let destination_id = match current_room.get_destination(exit) {
+            Some(id) => id,
+            None => return Err(CommandExecutionError::Unrecoverable(format!("Could not get destination for exit '{exit}' of current room.")))
+        };
+        let destination = match context.world.get_room(&destination_id) {
+            Some(r) => r,
+            None => return Err(CommandExecutionError::Unrecoverable(format!("Could not get destination room from ID '{destination_id}'.")))
+        };
+        exits.push(format!("{0}: {1} ({2})", exit, destination.alias(), destination_id));
+    }
+
+    let response = format!("{0} ({1})\n\n{2}", current_room.alias(), position.room, exits.join("\n"));
+    Ok(CommandResult::Query(response.into()))
+}
+
 pub async fn handle_command(context: &mut SessionContext, command: Command) -> Result<CommandResult, CommandExecutionError> {
     match command {
         Command::Go(direction) => handle_go(context, direction).await,
@@ -417,6 +447,7 @@ pub async fn handle_command(context: &mut SessionContext, command: Command) -> R
         Command::Save(target, path) => handle_save(context, target, path),
         Command::Link(direction, target) => handle_link(context, direction, target),
         Command::Create(direction, target) => handle_create(context, direction, target),
+        Command::RoomInfo => handle_roominfo(context),
 
         Command::Quit => {
             let name = context.entities.get_component::<Name>(&context.player_id)
