@@ -93,6 +93,15 @@ pub struct Room {
 }
 
 impl Room {
+    pub fn new(alias: String, name: String, description: String, exits: HashMap<Direction, RoomId>) -> Room {
+        Room {
+            alias,
+            name,
+            description,
+            exits
+        }
+    }
+    
     pub fn get_destination(&self, direction: Direction) -> Option<&RoomId> {
         self.exits.get(&direction)
     }
