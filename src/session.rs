@@ -170,11 +170,13 @@ async fn handle_input(session_context: &mut SessionContext, input: &str) -> Resu
                         session_context.event_bus.publish(&event.event, &targets).await?;
                     }
                     a.response().clone()
-                }
+                },
+                CommandResult::Unauthorized => Some("You are not authorized to do that.".into())
             }
         }
         Err(CommandParseError::UnknownCommand(s)) => Some(format!("Unknown command: '{s}'")),
-        Err(CommandParseError::InvalidSyntax(s)) => Some(s)
+        Err(CommandParseError::InvalidSyntax(s)) => Some(s),
+        Err(CommandParseError::InvalidDirection(s)) => Some(format!("Invalid direction: '{s}'"))
     };
 
     Ok(response)

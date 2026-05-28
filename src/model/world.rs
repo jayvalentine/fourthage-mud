@@ -8,12 +8,37 @@ use uuid::uuid;
 
 use super::ids::RoomId;
 
+pub enum DirectionParseError {
+    Invalid(String)
+}
+
 #[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
 pub enum Direction {
     North,
     South,
     East,
     West
+}
+
+impl Direction {
+    pub fn from_string(s: &str) -> Result<Direction, DirectionParseError> {
+        match s.to_ascii_lowercase().as_str() {
+            "n" | "north" => Ok(Direction::North),
+            "s" | "south" => Ok(Direction::South),
+            "e" | "east" => Ok(Direction::East),
+            "w" | "west" => Ok(Direction::West),
+            s => Err(DirectionParseError::Invalid(s.to_string()))
+        }
+    }
+
+    pub fn opposite(&self) -> Direction {
+        match self {
+            Direction::North => Direction::South,
+            Direction::South => Direction::North,
+            Direction::East => Direction::West,
+            Direction::West => Direction::East
+        }
+    }
 }
 
 impl fmt::Display for Direction {
@@ -80,6 +105,10 @@ impl Room {
         &self.description
     }
 
+    pub fn alias(&self) -> &str {
+        &self.alias
+    }
+
     pub fn set_description(&mut self, desc: String) {
         self.description = desc;
     }
@@ -88,8 +117,16 @@ impl Room {
         self.name = name;
     }
 
+    pub fn set_exit(&mut self, direction: Direction, destination: RoomId) {
+        self.exits.insert(direction, destination);
+    }
+
     pub fn exits(&self) -> Vec<Direction> {
         self.exits.keys().copied().collect()
+    }
+
+    pub fn has_exit(&self, direction: &Direction) -> bool {
+        self.exits.contains_key(direction)
     }
 }
 
@@ -132,6 +169,11 @@ impl World {
             write.aliases.remove(&old_room.alias);
         }
         write.aliases.insert(new_alias, id.clone());
+    }
+
+    pub fn resolve_alias(&self, alias: &str) -> Option<RoomId> {
+        let read = self.inner.read();
+        read.aliases.get(alias).cloned()
     }
 
     pub fn rooms(&self) -> MappedRwLockReadGuard<RawRwLock, HashMap<RoomId, Arc<Room>>> {

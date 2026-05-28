@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use uuid::Uuid;
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
@@ -10,6 +12,12 @@ impl EntityId {
 
     pub fn as_uuid(&self) -> Uuid {
         self.0
+    }
+}
+
+impl Display for EntityId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_uuid())
     }
 }
 
@@ -31,5 +39,11 @@ impl RoomId {
 
     pub fn as_uuid(&self) -> Uuid {
         self.0.as_uuid()
+    }
+}
+
+impl Display for RoomId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_uuid())
     }
 }

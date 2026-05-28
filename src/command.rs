@@ -1,6 +1,6 @@
 use crate::entities::{EntityRegistryError, Name, Player, Position};
 use crate::event::{Event, EventTarget, GameEvent};
-use crate::model::world::Room;
+use crate::model::world::{DirectionParseError, Room};
 use crate::model::{world::Direction, ids::{EntityId, RoomId}};
 use crate::session::SessionContext;
 use crate::{data, persistence};
@@ -14,6 +14,7 @@ pub enum Command {
     // Admin commands
     Edit(EditField, String),
     Save(SaveTarget, String),
+    Link(Direction, String),
 
     // Session management commands
     Quit
@@ -30,7 +31,16 @@ pub enum SaveTarget {
 
 pub enum CommandParseError {
     UnknownCommand(String),
-    InvalidSyntax(String)
+    InvalidSyntax(String),
+    InvalidDirection(String)
+}
+
+impl From<DirectionParseError> for CommandParseError {
+    fn from(value: DirectionParseError) -> Self {
+        match value {
+            DirectionParseError::Invalid(s) => CommandParseError::InvalidDirection(s)
+        }
+    }
 }
 
 pub struct ActionResult {
@@ -58,9 +68,22 @@ impl QueryResult {
     }
 }
 
+impl From<&str> for QueryResult {
+    fn from(value: &str) -> Self {
+        QueryResult { response: value.to_string() }
+    }
+}
+
+impl From<String> for QueryResult {
+    fn from(value: String) -> Self {
+        QueryResult { response: value }
+    }
+}
+
 pub enum CommandResult {
     Action(ActionResult),
-    Query(QueryResult)
+    Query(QueryResult),
+    Unauthorized
 }
 
 pub enum CommandExecutionError {
@@ -145,6 +168,17 @@ impl Command {
                     None => return Err(CommandParseError::InvalidSyntax("Save to where?".into()))
                 };
                 Ok(Command::Save(target, path.to_string()))
+            },
+            "link" => {
+                let direction = match parts.next() {
+                    Some(s) => Direction::from_string(s)?,
+                    None => return Err(CommandParseError::InvalidSyntax("Link in which direction?".into()))
+                };
+                let alias = match parts.next() {
+                    Some(s) => s,
+                    None => return Err(CommandParseError::InvalidSyntax("Link to where?".into()))
+                };
+                Ok(Command::Link(direction, alias.to_string()))
             }
 
             "quit" => Ok(Command::Quit),
@@ -249,7 +283,7 @@ fn handle_look(context: &SessionContext) -> Result<CommandResult, CommandExecuti
 
 fn handle_edit(context: &SessionContext, field: EditField, content: String) -> Result<CommandResult, CommandExecutionError> {
     if !context.is_admin {
-        return Ok(CommandResult::Query(QueryResult { response: "You are not authorized to do that.".into()}))
+        return Ok(CommandResult::Unauthorized)
     }
 
     let position = get_current_position(context)?;
@@ -269,7 +303,7 @@ fn handle_edit(context: &SessionContext, field: EditField, content: String) -> R
 
 fn handle_save(context: &SessionContext, target: SaveTarget, path: String) -> Result<CommandResult, CommandExecutionError> {
     if !context.is_admin {
-        return Ok(CommandResult::Query(QueryResult { response: "You are not authorized to do that.".into()}))
+        return Ok(CommandResult::Unauthorized)
     }
 
     let response = match target {
@@ -285,6 +319,49 @@ fn handle_save(context: &SessionContext, target: SaveTarget, path: String) -> Re
     Ok(CommandResult::Query(QueryResult { response }))
 }
 
+fn handle_link(context: &SessionContext, direction: Direction, target: String) -> Result<CommandResult, CommandExecutionError> {
+    if !context.is_admin {
+        return Ok(CommandResult::Unauthorized)
+    }
+
+    let position = get_current_position(context)?;
+    let current_room = match context.world.get_room(&position.room) {
+        Some(r) => r,
+        None => return Ok(CommandResult::Query(format!("Could not get current room (ID: {0})", position.room).into()))
+    };
+
+    let other_room_id = match context.world.resolve_alias(&target) {
+        Some(r) => r,
+        None => return Ok(CommandResult::Query(format!("Unknown room alias: '{target}'").into()))
+    };
+    let other_room = match context.world.get_room(&other_room_id) {
+        Some(r) => r,
+        None => return Ok(CommandResult::Query(format!("Could not get room with alias: '{target}' (ID: {other_room_id})").into()))
+    };
+
+    let opposite_direction = direction.opposite();
+
+    if current_room.has_exit(&direction) {
+        return Ok(CommandResult::Query(format!("Current room already has an exit to the {direction}").into()))
+    };
+    if other_room.has_exit(&opposite_direction) {
+        return Ok(CommandResult::Query(format!("Destination room already has an exit to the {opposite_direction}").into()))
+    };
+
+    let mut current_room = Room::clone(&current_room);
+    let mut other_room = Room::clone(&other_room);
+
+    current_room.set_exit(direction, other_room_id.clone());
+    other_room.set_exit(opposite_direction, position.room.clone());
+
+    let response = format!("Linked '{0}' to '{1}'", current_room.alias(), other_room.alias());
+
+    context.world.update_room(position.room, current_room);
+    context.world.update_room(other_room_id, other_room);
+
+    Ok(CommandResult::Query(response.into()))
+}
+
 pub async fn handle_command(context: &mut SessionContext, command: Command) -> Result<CommandResult, CommandExecutionError> {
     match command {
         Command::Go(direction) => handle_go(context, direction).await,
@@ -294,6 +371,7 @@ pub async fn handle_command(context: &mut SessionContext, command: Command) -> R
 
         Command::Edit(field, content) => handle_edit(context, field, content),
         Command::Save(target, path) => handle_save(context, target, path),
+        Command::Link(direction, target) => handle_link(context, direction, target),
 
         Command::Quit => {
             let name = context.entities.get_component::<Name>(&context.player_id)
