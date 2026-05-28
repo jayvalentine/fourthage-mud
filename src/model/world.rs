@@ -101,7 +101,7 @@ impl Room {
             exits
         }
     }
-    
+
     pub fn get_destination(&self, direction: Direction) -> Option<&RoomId> {
         self.exits.get(&direction)
     }
@@ -128,6 +128,10 @@ impl Room {
 
     pub fn set_exit(&mut self, direction: Direction, destination: RoomId) {
         self.exits.insert(direction, destination);
+    }
+
+    pub fn remove_exit(&mut self, direction: &Direction) {
+        self.exits.remove(direction);
     }
 
     pub fn exits(&self) -> Vec<Direction> {

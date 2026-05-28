@@ -17,6 +17,7 @@ pub enum Command {
     Edit(EditField, String),
     Save(SaveTarget, String),
     Link(Direction, String),
+    Unlink(Direction),
     Create(Direction, String),
     RoomInfo,
 
@@ -184,6 +185,13 @@ impl Command {
                 };
                 Ok(Command::Link(direction, alias.to_string()))
             },
+            "unlink" => {
+                let direction = match parts.next() {
+                    Some(s) => Direction::from_string(s)?,
+                    None => return Err(CommandParseError::InvalidSyntax("Unlink which direction?".into()))
+                };
+                Ok(Command::Unlink(direction))
+            }
             "create" => {
                 let direction = match parts.next() {
                     Some(s) => Direction::from_string(s)?,
@@ -378,6 +386,44 @@ fn handle_link(context: &SessionContext, direction: Direction, target: String) -
     Ok(CommandResult::Query(response.into()))
 }
 
+fn handle_unlink(context: &SessionContext, direction: Direction) -> Result<CommandResult, CommandExecutionError> {
+    if !context.is_admin {
+        return Ok(CommandResult::Unauthorized)
+    }
+
+    let position = get_current_position(context)?;
+    let current_room = match context.world.get_room(&position.room) {
+        Some(r) => r,
+        None => return Ok(CommandResult::Query(format!("Could not get current room (ID: {0})", position.room).into()))
+    };
+
+    if !current_room.has_exit(&direction) {
+        return Ok(CommandResult::Query(format!("Current room has no {direction} exit.").into()))
+    }
+
+    let other_room_id = match current_room.get_destination(direction) {
+        Some(id) => id,
+        None => return Err(CommandExecutionError::Unrecoverable(format!("Could not get destination for {direction} exit of current room.")))
+    };
+    let other_room = match context.world.get_room(&other_room_id) {
+        Some(r) => r,
+        None => return Err(CommandExecutionError::Unrecoverable(format!("Could not get destination room with ID: {other_room_id}")))
+    };
+
+    let mut current_room = Room::clone(&current_room);
+    let mut other_room = Room::clone(&other_room);
+
+    current_room.remove_exit(&direction);
+    other_room.remove_exit(&direction.opposite());
+
+    let response = format!("Removed link between '{0}' and '{1}'", current_room.alias(), other_room.alias());
+
+    context.world.update_room(position.room, current_room);
+    context.world.update_room(other_room_id.clone(), other_room);
+
+    Ok(CommandResult::Query(response.into()))
+}
+
 fn handle_create(context: &SessionContext, direction: Direction, target: String) -> Result<CommandResult, CommandExecutionError> {
     if !context.is_admin {
         return Ok(CommandResult::Unauthorized)
@@ -446,6 +492,7 @@ pub async fn handle_command(context: &mut SessionContext, command: Command) -> R
         Command::Edit(field, content) => handle_edit(context, field, content),
         Command::Save(target, path) => handle_save(context, target, path),
         Command::Link(direction, target) => handle_link(context, direction, target),
+        Command::Unlink(direction) => handle_unlink(context, direction),
         Command::Create(direction, target) => handle_create(context, direction, target),
         Command::RoomInfo => handle_roominfo(context),
 
