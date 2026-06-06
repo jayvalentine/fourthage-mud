@@ -330,6 +330,10 @@ fn handle_save(context: &SessionContext, target: SaveTarget, path: String) -> Re
         return Ok(CommandResult::Unauthorized)
     }
 
+    if path.contains("..") {
+        return Ok(CommandResult::Query(format!("Invalid path: {path}").into()))
+    }
+
     let response = match target {
         SaveTarget::World => {
             let rooms = context.world.rooms();
