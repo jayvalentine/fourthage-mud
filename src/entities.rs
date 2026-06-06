@@ -61,7 +61,8 @@ struct EntityRegistryInternal {
     entities: HashSet<EntityId>,
     positions: LocationMap,
     names: HashMap<EntityId, Name>,
-    players: HashMap<EntityId, Player>
+    players: HashMap<EntityId, Player>,
+    items: HashMap<EntityId, Item>,
 }
 
 trait ComponentStorage {
@@ -88,22 +89,31 @@ impl EntityRegistry {
             entities: HashSet::new(),
             positions: LocationMap::new(),
             names: HashMap::new(),
-            players: HashMap::new()
+            players: HashMap::new(),
+            items: HashMap::new()
         };
         EntityRegistry {
             internal: RwLock::new(internal)
         }
     }
 
-    pub fn spawn(&self, entity_id: EntityId) -> Result<EntityId, EntityRegistryError> {
+    pub fn spawn(&self, entity_id: Option<EntityId>) -> Result<EntityId, EntityRegistryError> {
         let mut internal = self.internal.write();
-        if internal.entities.contains(&entity_id) {
-            return Err(EntityRegistryError::DuplicateSpawn(entity_id))
-        }
-        
-        internal.entities.insert(entity_id.clone());
 
-        Ok(entity_id)
+        let id = match entity_id {
+            Some(id) => {
+                if internal.entities.contains(&id) {
+                    return Err(EntityRegistryError::DuplicateSpawn(id))
+                }
+                id
+            },
+            None => {
+                EntityId::generate()
+            }
+        };
+
+        internal.entities.insert(id.clone());
+        Ok(id)
     }
 
     pub fn despawn(&self, id: &EntityId) -> Result<(), EntityRegistryError> {
@@ -330,6 +340,35 @@ impl ComponentStorage for Player {
     }
 }
 
+/// Marker component for items.
+pub struct Item;
+
+impl ComponentStorage for Item {
+    fn get<'a>(entities: &'a EntityRegistryInternal, entity: &EntityId) -> Option<&'a Self>
+    where Self: Sized
+    {
+        entities.items.get(entity)
+    }
+
+    fn remove(entities: &mut EntityRegistryInternal, entity: &EntityId)
+    where Self: Sized
+    {
+        entities.items.remove(entity);
+    }
+
+    fn update(entities: &mut EntityRegistryInternal, entity: &EntityId, component: Self)
+    where Self: Sized
+    {
+        entities.items.insert(entity.clone(), component);
+    }
+
+    fn storage(entities: &EntityRegistryInternal) -> &HashMap<EntityId, Self>
+    where Self: Sized
+    {
+        &entities.items
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -340,8 +379,8 @@ mod tests {
     fn test_update_component() {
         let entities = EntityRegistry::new();
 
-        let e1 = entities.spawn(EntityId::generate()).unwrap();
-        let e2 = entities.spawn(EntityId::generate()).unwrap();
+        let e1 = entities.spawn(None).unwrap();
+        let e2 = entities.spawn(None).unwrap();
 
         entities.update_component(&e1, Name { value: "entity 1".to_string() }).unwrap();
 
@@ -357,9 +396,9 @@ mod tests {
     fn test_get_component_by_location() {
         let entities = EntityRegistry::new();
 
-        let e1 = entities.spawn(EntityId::generate()).unwrap();
-        let e2 = entities.spawn(EntityId::generate()).unwrap();
-        let e3 = entities.spawn(EntityId::generate()).unwrap();
+        let e1 = entities.spawn(None).unwrap();
+        let e2 = entities.spawn(None).unwrap();
+        let e3 = entities.spawn(None).unwrap();
 
         let room1 = RoomId::generate();
         let room2 = RoomId::generate();

@@ -79,7 +79,7 @@ impl SessionContext {
     pub fn new(id: EntityId, username: String, is_admin: bool, position: Location, world: Arc<World>, pool: PgPool, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<SessionContext, SessionError> {
         tracing::debug!("Session started for player {username} (id: {id:?})");
 
-        let id = entities.spawn(id)?;
+        let id = entities.spawn(Some(id))?;
         entities.update_component(&id, Player)?;
         entities.update_component(&id, position)?;
         entities.update_component(&id, Name { value: username })?;

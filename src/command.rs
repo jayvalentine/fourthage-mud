@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::entities::{EntityRegistryError, Name, Player, Location};
+use crate::entities::{EntityRegistryError, Item, Location, Name, Player};
 use crate::event::{Event, EventTarget, GameEvent};
 use crate::model::world::{DirectionParseError, Room};
 use crate::model::{world::Direction, ids::{EntityId, RoomId}};
@@ -19,10 +19,15 @@ pub enum Command {
     Link(Direction, String),
     Unlink(Direction),
     Create(Direction, String),
+    Spawn(SpawnTarget, String),
     RoomInfo,
 
     // Session management commands
     Quit
+}
+
+pub enum SpawnTarget {
+    Item
 }
 
 pub enum EditField {
@@ -203,6 +208,18 @@ impl Command {
                 };
                 Ok(Command::Create(direction, alias.to_string()))
             },
+            "spawn" => {
+                let what = match parts.next() {
+                    Some("item") => SpawnTarget::Item,
+                    Some(s) => return Err(CommandParseError::InvalidSyntax(format!("Cannot spawn {s}!"))),
+                    None => return Err(CommandParseError::InvalidSyntax("Spawn what?".into()))
+                };
+                let alias = match parts.next() {
+                    Some(s) => s,
+                    None => return Err(CommandParseError::InvalidSyntax("With what alias?".into()))
+                };
+                Ok(Command::Spawn(what, alias.to_string()))
+            }
             "roominfo" => Ok(Command::RoomInfo),
 
             "quit" => Ok(Command::Quit),
@@ -224,10 +241,20 @@ fn get_room_description(context: &SessionContext, id: &RoomId) -> Result<String,
 
     let room_name = current_room.name();
     let room_desc = current_room.description();
+    
     let exits: Vec<String> = current_room.exits().into_iter().map(|e| e.to_string()).collect();
     let exits = exits.join(", ");
 
-    let response = format!("{room_name}\n\n{room_desc}\n\nFrom here you can go: {exits}\n");
+    let entities: Vec<String> = context.entities.query_location::<Name, _, _>(&Location { value: id.as_entity() }, |iter| {
+        Ok(iter.map(|(_, n)| n.value.clone()).collect())
+    })?;
+    let entities = if entities.is_empty() {
+        "nothing".into()
+    } else {
+        entities.join(", ")
+    };
+
+    let response = format!("{room_name}\n\n{room_desc}\n\nHere is: {entities}\n\nFrom here you can go: {exits}\n");
     Ok(response)
 }
 
@@ -459,6 +486,31 @@ fn handle_create(context: &SessionContext, direction: Direction, target: String)
     Ok(CommandResult::Query(QueryResult { response }))
 }
 
+fn handle_spawn(context: &SessionContext, target: SpawnTarget, alias: String) -> Result<CommandResult, CommandExecutionError> {
+    if !context.is_admin {
+        return Ok(CommandResult::Unauthorized)
+    }
+    
+    let current_room_id = get_current_position(context)?;
+
+    let entity_id = context.entities.spawn(None)?;
+
+    let location = Location { value: current_room_id.as_entity() };
+    context.entities.update_component(&entity_id, location)?;
+
+    let name = Name { value: "Unnamed item".into() };
+    context.entities.update_component(&entity_id, name)?;
+
+    // Generate marker component depending on spawn target.
+    match target {
+        SpawnTarget::Item => {
+            context.entities.update_component(&entity_id, Item)?;
+            Ok(CommandResult::Query(format!("Spawned item '{alias}'").into()))
+        }
+    }
+
+}
+
 fn handle_roominfo(context: &SessionContext) -> Result<CommandResult, CommandExecutionError> {
     if !context.is_admin {
         return Ok(CommandResult::Unauthorized)
@@ -499,6 +551,7 @@ pub async fn handle_command(context: &mut SessionContext, command: Command) -> R
         Command::Link(direction, target) => handle_link(context, direction, target),
         Command::Unlink(direction) => handle_unlink(context, direction),
         Command::Create(direction, target) => handle_create(context, direction, target),
+        Command::Spawn(target, alias) => handle_spawn(context, target, alias),
         Command::RoomInfo => handle_roominfo(context),
 
         Command::Quit => {
