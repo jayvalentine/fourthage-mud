@@ -13,6 +13,12 @@ impl EntityId {
     pub fn as_uuid(&self) -> Uuid {
         self.0
     }
+
+    /// Generate a new unique ID
+    pub fn generate() -> EntityId {
+        let uuid = uuid::Uuid::now_v7();
+        EntityId(uuid)
+    }
 }
 
 impl Display for EntityId {
@@ -35,8 +41,7 @@ impl RoomId {
 
     /// Generate a new unique ID.
     pub fn generate() -> RoomId {
-        let uuid = uuid::Uuid::now_v7();
-        RoomId(EntityId(uuid))
+        RoomId(EntityId::generate())
     }
 
     pub fn as_entity(&self) -> EntityId {

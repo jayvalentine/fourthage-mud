@@ -1,8 +1,6 @@
 use core::fmt;
 use std::{collections::{HashMap, HashSet}, sync::{PoisonError, RwLock}};
 
-use uuid::uuid;
-
 use crate::{event::{EventTarget, EventTargetResolver}, model::ids::{RoomId, EntityId}};
 
 struct PositionMap {
@@ -52,6 +50,7 @@ impl PositionMap {
     }
 }
 
+#[derive(Debug)]
 pub enum EntityRegistryError {
     InvalidMutex,
     UnknownEntity(EntityId),
@@ -308,5 +307,27 @@ impl ComponentStorage for Player {
     where Self: Sized
     {
         &entities.players
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Tests that components can be updated and retrieved for entities.
+    #[test]
+    fn test_update_component() {
+        let entities = EntityRegistry::new();
+
+        let e1 = entities.spawn(EntityId::generate()).unwrap();
+        let e2 = entities.spawn(EntityId::generate()).unwrap();
+
+        entities.update_component(&e1, Name { value: "entity 1".to_string() }).unwrap();
+
+        let name1 = entities.get_component::<Name>(&e1).unwrap().unwrap();
+        assert_eq!("entity 1", name1.value);
+
+        let name2 = entities.get_component::<Name>(&e2).unwrap();
+        assert!(name2.is_none())
     }
 }
