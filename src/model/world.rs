@@ -58,13 +58,7 @@ impl<'de> Deserialize<'de> for Direction {
         D: serde::Deserializer<'de>
     {
         let s = String::deserialize(deserializer)?;
-        match s.as_str() {
-            "north" => Ok(Direction::North),
-            "south" => Ok(Direction::South),
-            "east" => Ok(Direction::East),
-            "west" => Ok(Direction::West),
-            invalid => Err(D::Error::custom(format!("Invalid direction: {invalid}")))
-        }
+        Direction::from_string(&s).map_err(|_| D::Error::custom(format!("Invalid direction: {s}")))
     }
 }
 
@@ -73,13 +67,7 @@ impl Serialize for Direction {
     where
         S: serde::Serializer
     {
-        let s = match self {
-            Direction::North => "north",
-            Direction::South => "south",
-            Direction::East => "east",
-            Direction::West => "west"
-        };
-        let s = s.to_string();
+        let s = format!("{}", self);
         String::serialize(&s, serializer)
     }
 }
