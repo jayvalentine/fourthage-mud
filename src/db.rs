@@ -47,24 +47,24 @@ pub async fn create_account(pool: &PgPool, username: &str, password_hash: &str) 
     Ok(AccountRow { id: EntityId::from_uuid(row.id), username: row.username, is_admin: row.is_admin, password_hash: row.password_hash })
 }
 
-pub async fn update_position(pool: &PgPool, id: &EntityId, room_id: &RoomId) -> Result<(), DatabaseError> {
+pub async fn update_location(pool: &PgPool, id: &EntityId, location_id: &EntityId) -> Result<(), DatabaseError> {
     sqlx::query!(
         "INSERT INTO positions (entity_id, room_id) VALUES ($1, $2)
          ON CONFLICT(entity_id) DO UPDATE SET room_id = $2",
         id.as_uuid(),
-        room_id.as_uuid()
+        location_id.as_uuid()
     ).execute(pool).await?;
     Ok(())
 }
 
-pub async fn get_position(pool: &PgPool, id: &EntityId) -> Result<Option<RoomId>, DatabaseError> {
+pub async fn get_location(pool: &PgPool, id: &EntityId) -> Result<Option<EntityId>, DatabaseError> {
     let room = sqlx::query!(
         "SELECT room_id FROM positions WHERE entity_id = $1",
         id.as_uuid()
     ).fetch_optional(pool).await?;
 
     match room {
-        Some(id) => Ok(Some(RoomId::from_uuid(id.room_id))),
+        Some(id) => Ok(Some(EntityId::from_uuid(id.room_id))),
         None => Ok(None)
     }
 }

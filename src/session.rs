@@ -6,7 +6,7 @@ use tokio::io::{AsyncWriteExt, AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc;
 
 use crate::command::{Command, CommandExecutionError, CommandParseError, CommandResult, handle_command};
-use crate::entities::{EntityRegistry, EntityRegistryError, Name, Player, Position};
+use crate::entities::{EntityRegistry, EntityRegistryError, Name, Player, Location};
 use crate::event::{EventBus, EventBusError, EventTargetResolver, GameEvent};
 use crate::model::ids::EntityId;
 use crate::model::world::{World};
@@ -59,7 +59,6 @@ impl From<EventBusError> for SessionError {
 impl From<EntityRegistryError> for SessionError {
     fn from(value: EntityRegistryError) -> Self {
         match value {
-            EntityRegistryError::InvalidMutex => SessionError::Internal("Entity registry holds invalid mutex".into()),
             EntityRegistryError::UnknownEntity(entity) => SessionError::Internal(format!("Attempted to update property of unknown entity '{entity:?}'")),
             EntityRegistryError::DuplicateSpawn(_) => SessionError::Login
         }
@@ -77,7 +76,7 @@ pub struct SessionContext {
 }
 
 impl SessionContext {
-    pub fn new(id: EntityId, username: String, is_admin: bool, position: Position, world: Arc<World>, pool: PgPool, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<SessionContext, SessionError> {
+    pub fn new(id: EntityId, username: String, is_admin: bool, position: Location, world: Arc<World>, pool: PgPool, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<SessionContext, SessionError> {
         tracing::debug!("Session started for player {username} (id: {id:?})");
 
         let id = entities.spawn(id)?;
@@ -220,7 +219,7 @@ async fn run_internal(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedR
 
     let position = match persistence::load_position(&account.id, &pool).await? {
         Some(pos) => pos,
-        None => Position { room: World::default_room_id() }
+        None => Location { value: World::default_room_id().as_entity() }
     };
     let mut session_context = SessionContext::new(account.id, account.username, account.is_admin, position, world, pool, event_bus, entities)?;
     welcome(writer, &session_context).await?;
