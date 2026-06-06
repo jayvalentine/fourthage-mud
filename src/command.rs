@@ -1,20 +1,51 @@
+use std::collections::HashMap;
+
 use crate::entities::{EntityRegistryError, Name, Player, Position};
 use crate::event::{Event, EventTarget, GameEvent};
+use crate::model::world::{DirectionParseError, Room};
 use crate::model::{world::Direction, ids::{EntityId, RoomId}};
 use crate::session::SessionContext;
-use crate::persistence;
+use crate::{data, persistence};
 
 pub enum Command {
     Go(Direction),
     Say(String),
     Who,
     Look,
+
+    // Admin commands
+    Edit(EditField, String),
+    Save(SaveTarget, String),
+    Link(Direction, String),
+    Unlink(Direction),
+    Create(Direction, String),
+    RoomInfo,
+
+    // Session management commands
     Quit
+}
+
+pub enum EditField {
+    Description,
+    Name
+}
+
+pub enum SaveTarget {
+    World
 }
 
 pub enum CommandParseError {
     UnknownCommand(String),
-    InvalidSyntax(String)
+    InvalidSyntax(String),
+    InvalidDirection(String)
+}
+
+impl From<DirectionParseError> for CommandParseError {
+    fn from(value: DirectionParseError) -> Self {
+        match value {
+            DirectionParseError::Invalid(s) => CommandParseError::InvalidDirection(s)
+        }
+    }
 }
 
 pub struct ActionResult {
@@ -42,9 +73,22 @@ impl QueryResult {
     }
 }
 
+impl From<&str> for QueryResult {
+    fn from(value: &str) -> Self {
+        QueryResult { response: value.to_string() }
+    }
+}
+
+impl From<String> for QueryResult {
+    fn from(value: String) -> Self {
+        QueryResult { response: value }
+    }
+}
+
 pub enum CommandResult {
     Action(ActionResult),
-    Query(QueryResult)
+    Query(QueryResult),
+    Unauthorized
 }
 
 pub enum CommandExecutionError {
@@ -98,10 +142,79 @@ impl Command {
             },
             "who" => Ok(Command::Who),
             "look" => Ok(Command::Look),
+
+            "edit" => {
+                let field = match parts.next() {
+                    Some(s) => s,
+                    None => return Err(CommandParseError::InvalidSyntax("Edit what?".into()))
+                };
+                let field = match field {
+                    "desc" | "description" => EditField::Description,
+                    "name" | "title" => EditField::Name,
+                    s => return Err(CommandParseError::UnknownCommand(format!("Unknown edit field '{s}'")))
+                };
+                let content = parts.collect::<Vec<&str>>().join(" ");
+                if content.is_empty() {
+                    return Err(CommandParseError::InvalidSyntax("No edit content!".into()))
+                }
+                Ok(Command::Edit(field, content))
+            },
+            "save" => {
+                let target = match parts.next() {
+                    Some(s) => s,
+                    None => return Err(CommandParseError::InvalidSyntax("Save what?".into()))
+                };
+                let target = match target {
+                    "world" => SaveTarget::World,
+                    s => return Err(CommandParseError::UnknownCommand(format!("Don't know how to save '{s}'!")))
+                };
+                let path = match parts.next() {
+                    Some(s) => s,
+                    None => return Err(CommandParseError::InvalidSyntax("Save to where?".into()))
+                };
+                Ok(Command::Save(target, path.to_string()))
+            },
+            "link" => {
+                let direction = match parts.next() {
+                    Some(s) => Direction::from_string(s)?,
+                    None => return Err(CommandParseError::InvalidSyntax("Link in which direction?".into()))
+                };
+                let alias = match parts.next() {
+                    Some(s) => s,
+                    None => return Err(CommandParseError::InvalidSyntax("Link to where?".into()))
+                };
+                Ok(Command::Link(direction, alias.to_string()))
+            },
+            "unlink" => {
+                let direction = match parts.next() {
+                    Some(s) => Direction::from_string(s)?,
+                    None => return Err(CommandParseError::InvalidSyntax("Unlink which direction?".into()))
+                };
+                Ok(Command::Unlink(direction))
+            }
+            "create" => {
+                let direction = match parts.next() {
+                    Some(s) => Direction::from_string(s)?,
+                    None => return Err(CommandParseError::InvalidSyntax("Create in which direction?".into()))
+                };
+                let alias = match parts.next() {
+                    Some(s) => s,
+                    None => return Err(CommandParseError::InvalidSyntax("Create what?".into()))
+                };
+                Ok(Command::Create(direction, alias.to_string()))
+            },
+            "roominfo" => Ok(Command::RoomInfo),
+
             "quit" => Ok(Command::Quit),
             _ => Err(CommandParseError::UnknownCommand(input.to_string())),
         }
     }
+}
+
+fn get_current_position(context: &SessionContext) -> Result<Position, CommandExecutionError> {
+    context.entities.get_component::<Position>(&context.player_id)
+        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {:?}", &context.player_id)))?
+        .ok_or(CommandExecutionError::Unrecoverable(format!("Entity {:?} has no position component", &context.player_id)))
 }
 
 fn get_room_description(context: &SessionContext, id: &RoomId) -> Result<String, CommandExecutionError> {
@@ -118,9 +231,7 @@ fn get_room_description(context: &SessionContext, id: &RoomId) -> Result<String,
 }
 
 async fn handle_go(context: &mut SessionContext, direction: Direction) -> Result<CommandResult, CommandExecutionError> {
-    let position = context.entities.get_component::<Position>(&context.player_id)
-        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {:?}", &context.player_id)))?
-        .ok_or(CommandExecutionError::Unrecoverable(format!("Entity {:?} has no position component", &context.player_id)))?;
+    let position = get_current_position(context)?;
     let current_room = context.world.get_room(&position.room)
         .ok_or(CommandExecutionError::Unrecoverable("Could not retrieve room based on current room ID".into()))?;
 
@@ -194,12 +305,201 @@ fn handle_look(context: &SessionContext) -> Result<CommandResult, CommandExecuti
     Ok(CommandResult::Query(QueryResult { response }))
 }
 
+fn handle_edit(context: &SessionContext, field: EditField, content: String) -> Result<CommandResult, CommandExecutionError> {
+    if !context.is_admin {
+        return Ok(CommandResult::Unauthorized)
+    }
+
+    let position = get_current_position(context)?;
+    let response = if let Some(room) = context.world.get_room(&position.room) {
+        let mut updated = Room::clone(&room);
+        match field {
+            EditField::Description => { updated.set_description(content); },
+            EditField::Name => { updated.set_name(content); }
+        }
+        context.world.update_room(position.room.clone(), updated);
+        CommandResult::Query(QueryResult { response: "Updated room.".into() })
+    } else {
+        CommandResult::Query(QueryResult { response: format!("Cannot update room '{0:?}'", position.room) })
+    };
+    Ok(response)
+}
+
+fn handle_save(context: &SessionContext, target: SaveTarget, path: String) -> Result<CommandResult, CommandExecutionError> {
+    if !context.is_admin {
+        return Ok(CommandResult::Unauthorized)
+    }
+
+    if path.contains("..") {
+        return Ok(CommandResult::Query(format!("Invalid path: {path}").into()))
+    }
+
+    let response = match target {
+        SaveTarget::World => {
+            let rooms = context.world.rooms();
+            match data::save_rooms(&format!("data/{path}"), &rooms) {
+                Ok(_) => format!("World saved to '{path}'"),
+                Err(e) => format!("Could not save world to '{path}': {e:?}")
+            }
+        }
+    };
+
+    Ok(CommandResult::Query(QueryResult { response }))
+}
+
+fn handle_link(context: &SessionContext, direction: Direction, target: String) -> Result<CommandResult, CommandExecutionError> {
+    if !context.is_admin {
+        return Ok(CommandResult::Unauthorized)
+    }
+
+    let position = get_current_position(context)?;
+    let current_room = match context.world.get_room(&position.room) {
+        Some(r) => r,
+        None => return Ok(CommandResult::Query(format!("Could not get current room (ID: {0})", position.room).into()))
+    };
+
+    let other_room_id = match context.world.resolve_alias(&target) {
+        Some(r) => r,
+        None => return Ok(CommandResult::Query(format!("Unknown room alias: '{target}'").into()))
+    };
+    let other_room = match context.world.get_room(&other_room_id) {
+        Some(r) => r,
+        None => return Ok(CommandResult::Query(format!("Could not get room with alias: '{target}' (ID: {other_room_id})").into()))
+    };
+
+    let opposite_direction = direction.opposite();
+
+    if current_room.has_exit(&direction) {
+        return Ok(CommandResult::Query(format!("Current room already has an exit to the {direction}").into()))
+    };
+    if other_room.has_exit(&opposite_direction) {
+        return Ok(CommandResult::Query(format!("Destination room already has an exit to the {opposite_direction}").into()))
+    };
+
+    let mut current_room = Room::clone(&current_room);
+    let mut other_room = Room::clone(&other_room);
+
+    current_room.set_exit(direction, other_room_id.clone());
+    other_room.set_exit(opposite_direction, position.room.clone());
+
+    let response = format!("Linked '{0}' to '{1}'", current_room.alias(), other_room.alias());
+
+    context.world.update_room(position.room, current_room);
+    context.world.update_room(other_room_id, other_room);
+
+    Ok(CommandResult::Query(response.into()))
+}
+
+fn handle_unlink(context: &SessionContext, direction: Direction) -> Result<CommandResult, CommandExecutionError> {
+    if !context.is_admin {
+        return Ok(CommandResult::Unauthorized)
+    }
+
+    let position = get_current_position(context)?;
+    let current_room = match context.world.get_room(&position.room) {
+        Some(r) => r,
+        None => return Ok(CommandResult::Query(format!("Could not get current room (ID: {0})", position.room).into()))
+    };
+
+    if !current_room.has_exit(&direction) {
+        return Ok(CommandResult::Query(format!("Current room has no {direction} exit.").into()))
+    }
+
+    let other_room_id = match current_room.get_destination(direction) {
+        Some(id) => id,
+        None => return Err(CommandExecutionError::Unrecoverable(format!("Could not get destination for {direction} exit of current room.")))
+    };
+    let other_room = match context.world.get_room(&other_room_id) {
+        Some(r) => r,
+        None => return Err(CommandExecutionError::Unrecoverable(format!("Could not get destination room with ID: {other_room_id}")))
+    };
+
+    let mut current_room = Room::clone(&current_room);
+    let mut other_room = Room::clone(&other_room);
+
+    current_room.remove_exit(&direction);
+    other_room.remove_exit(&direction.opposite());
+
+    let response = format!("Removed link between '{0}' and '{1}'", current_room.alias(), other_room.alias());
+
+    context.world.update_room(position.room, current_room);
+    context.world.update_room(other_room_id.clone(), other_room);
+
+    Ok(CommandResult::Query(response.into()))
+}
+
+fn handle_create(context: &SessionContext, direction: Direction, target: String) -> Result<CommandResult, CommandExecutionError> {
+    if !context.is_admin {
+        return Ok(CommandResult::Unauthorized)
+    }
+
+    let position = get_current_position(context)?;
+    let current_room = match context.world.get_room(&position.room) {
+        Some(r) => r,
+        None => return Ok(CommandResult::Query(format!("Could not get current room (ID: {0})", position.room).into()))
+    };
+
+    if current_room.has_exit(&direction) {
+        return Ok(CommandResult::Query(format!("Current room already has an exit to the {direction}").into()))
+    }
+
+    let mut current_room = Room::clone(&current_room);
+    let other_room_id = RoomId::generate();
+    let mut other_room = Room::new(target, "Unnamed Room".into(), "This room has no description.".into(), HashMap::new());
+
+    current_room.set_exit(direction, other_room_id.clone());
+    other_room.set_exit(direction.opposite(), position.room.clone());
+
+    let response = format!("Created room '{0}' to the {1}.", other_room.alias(), direction);
+
+    context.world.update_room(position.room, current_room);
+    context.world.update_room(other_room_id, other_room);
+
+    Ok(CommandResult::Query(QueryResult { response }))
+}
+
+fn handle_roominfo(context: &SessionContext) -> Result<CommandResult, CommandExecutionError> {
+    if !context.is_admin {
+        return Ok(CommandResult::Unauthorized)
+    }
+
+    let position = get_current_position(context)?;
+    let current_room = match context.world.get_room(&position.room) {
+        Some(r) => r,
+        None => return Ok(CommandResult::Query(format!("Could not get current room (ID: {0})", position.room).into()))
+    };
+
+    let mut exits: Vec<String> = Vec::new();
+    for exit in current_room.exits() {
+        let destination_id = match current_room.get_destination(exit) {
+            Some(id) => id,
+            None => return Err(CommandExecutionError::Unrecoverable(format!("Could not get destination for exit '{exit}' of current room.")))
+        };
+        let destination = match context.world.get_room(&destination_id) {
+            Some(r) => r,
+            None => return Err(CommandExecutionError::Unrecoverable(format!("Could not get destination room from ID '{destination_id}'.")))
+        };
+        exits.push(format!("{0}: {1} ({2})", exit, destination.alias(), destination_id));
+    }
+
+    let response = format!("{0} ({1})\n\n{2}", current_room.alias(), position.room, exits.join("\n"));
+    Ok(CommandResult::Query(response.into()))
+}
+
 pub async fn handle_command(context: &mut SessionContext, command: Command) -> Result<CommandResult, CommandExecutionError> {
     match command {
         Command::Go(direction) => handle_go(context, direction).await,
         Command::Say(sentence) => handle_say(context, &sentence),
         Command::Who => handle_who(context),
         Command::Look => handle_look(context),
+
+        Command::Edit(field, content) => handle_edit(context, field, content),
+        Command::Save(target, path) => handle_save(context, target, path),
+        Command::Link(direction, target) => handle_link(context, direction, target),
+        Command::Unlink(direction) => handle_unlink(context, direction),
+        Command::Create(direction, target) => handle_create(context, direction, target),
+        Command::RoomInfo => handle_roominfo(context),
+
         Command::Quit => {
             let name = context.entities.get_component::<Name>(&context.player_id)
                 .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get name for entity: {:?}", context.player_id)))?

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, username, password_hash FROM accounts WHERE username = $1",
+  "query": "INSERT INTO accounts (username, password_hash) VALUES ($1, $2)\n         RETURNING id, username, is_admin, password_hash",
   "describe": {
     "columns": [
       {
@@ -15,20 +15,27 @@
       },
       {
         "ordinal": 2,
+        "name": "is_admin",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 3,
         "name": "password_hash",
         "type_info": "Text"
       }
     ],
     "parameters": {
       "Left": [
+        "Text",
         "Text"
       ]
     },
     "nullable": [
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "64088548934ec8a92f568ba743fc373763c7e3feeb8f2c466d35372bd8579f64"
+  "hash": "4ff9c668f2d5dbfb6898d467079da4faef0d8981d97c39efd5bc3269efa5bb9e"
 }

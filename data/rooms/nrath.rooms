@@ -1,327 +1,331 @@
-019e5690-0757-7256-97c1-a3f452c60933:
-  description: A cozy bookshop, with shelves lining each wall. The owner is sitting
-    in a comfortable chair by the entrance, leafing through a small book.
+019e5690-0757-7256-97c1-a419a21c29de:
+  alias: stream_5
+  name: Stream
+  description: A stream.
   exits:
-    south: 019e5690-0757-7256-97c1-a4078e68e7b2
-    west: 019e5690-0757-7256-97c1-a40c45c0e09f
-  id: bookshop
-  name: Bookshop
+    east: 019e5690-0757-7256-97c1-a41af3ce941f
+    west: 019e5690-0757-7256-97c1-a41802b53ba3
+    north: 019e5690-0757-7256-97c1-a40675f0c254
+019e5690-0757-7256-97c1-a41c6552ad3b:
+  alias: stream_8
+  name: Stream
+  description: A stream.
+  exits:
+    north: 019e5690-0757-7256-97c1-a41d9acaac9c
+    west: 019e5690-0757-7256-97c1-a41b27e3086e
+019e5690-0757-7256-97c1-a41af3ce941f:
+  alias: stream_6
+  name: Stream
+  description: A stream.
+  exits:
+    west: 019e5690-0757-7256-97c1-a419a21c29de
+    north: 019e5690-0757-7256-97c1-a41b27e3086e
+019e5690-0757-7256-97c1-a40bf04c9bd0:
+  alias: road_east_5
+  name: East Road
+  description: A road.
+  exits:
+    west: 019e5690-0757-7256-97c1-a40a5c7974cc
+    south: 019e5690-0757-7256-97c1-a41d9acaac9c
+019e702f-c2f0-7e82-8896-21d5a98ceadb:
+  alias: grove
+  name: Grove
+  description: A clearing in the forest, lit by sunlight streaming in through the canopy. A small statue of the Goddess sits on an altar, surrounded by wildflowers.
+  exits:
+    north: 019e5690-0757-7256-97c1-a4152441286b
+    west: 019e5690-0757-7256-97c1-a4134fad40d8
+019e5690-0757-7256-97c1-a40a5c7974cc:
+  alias: road_east_4
+  name: East Road
+  description: A road.
+  exits:
+    west: 019e5690-0757-7256-97c1-a409fc40cbd3
+    east: 019e5690-0757-7256-97c1-a40bf04c9bd0
+    south: 019e5690-0757-7256-97c1-a3f6428a9cef
 019e5690-0757-7256-97c1-a3f530c22357:
-  description: A small cowpen, with drystone walls built using local stone. Some of
-    the stones have been knocked over.
-  exits:
-    east: 019e5690-0757-7256-97c1-a40e1371a1b4
-    north: 019e5690-0757-7256-97c1-a3f74b7a2075
-  id: cowpen
+  alias: cowpen
   name: Cowpen
+  description: A small cowpen, with drystone walls built using local stone. Some of the stones have been knocked over.
+  exits:
+    north: 019e5690-0757-7256-97c1-a3f74b7a2075
+    east: 019e5690-0757-7256-97c1-a40e1371a1b4
+019e5690-0757-7256-97c1-a3fabbff50d5:
+  alias: herb_garden
+  name: Herb Garden
+  description: A small herb garden, with planters full of all the herbs a cook could want.
+  exits:
+    south: 019e5690-0757-7256-97c1-a417dfbf757d
+    east: 019e5690-0757-7256-97c1-a401cf29efef
+019e5690-0757-7256-97c1-a4049eef9c36:
+  alias: market_west
+  name: Market Square - West
+  description: A small village square. A couple of traders have set up their stalls here.
+  exits:
+    north: 019e5690-0757-7256-97c1-a3fbc1939802
+    south: 019e5690-0757-7256-97c1-a3fca718651c
+    east: 019e5690-0757-7256-97c1-a403f4d347ca
+    west: 019e5690-0757-7256-97c1-a411711682ae
+019e5690-0757-7256-97c1-a403f4d347ca:
+  alias: market_east
+  name: Market Square - East
+  description: A small village square. Several traders have set up their stalls here.
+  exits:
+    north: 019e5690-0757-7256-97c1-a40c45c0e09f
+    west: 019e5690-0757-7256-97c1-a4049eef9c36
+    south: 019e5690-0757-7256-97c1-a40036168b93
+    east: 019e5690-0757-7256-97c1-a4078e68e7b2
+019e5690-0757-7256-97c1-a4134fad40d8:
+  alias: seer_hut
+  name: Outside Seer's Hut
+  description: A tiny hut. The faint glow of candlelight is visible through the open window. A plume of smoke rises from a small chimney built into the slate roof.
+  exits:
+    east: 019e702f-c2f0-7e82-8896-21d5a98ceadb
+    north: 019e5690-0757-7256-97c1-a3f9f0e02faa
+    south: 019e704f-edbd-7381-a33a-790b1cf06fb6
+019e5690-0757-7256-97c1-a3f9f0e02faa:
+  alias: forest_1
+  name: Forest
+  description: A forest.
+  exits:
+    east: 019e5690-0757-7256-97c1-a4152441286b
+    south: 019e5690-0757-7256-97c1-a4134fad40d8
+019e5690-0757-7256-97c1-a3ff8dfefd2d:
+  alias: house_5
+  name: House
+  description: A house.
+  exits:
+    west: 019e5690-0757-7256-97c1-a40d1b64f2bd
+019e5690-0757-7256-97c1-a4078e68e7b2:
+  alias: road_east_1
+  name: East Road
+  description: A road.
+  exits:
+    east: 019e5690-0757-7256-97c1-a40850879569
+    west: 019e5690-0757-7256-97c1-a403f4d347ca
+    north: 019e5690-0757-7256-97c1-a3f452c60933
+019e5690-0757-7256-97c1-a3fdcc740a1f:
+  alias: house_3
+  name: House
+  description: A house.
+  exits:
+    north: 019e5690-0757-7256-97c1-a411711682ae
+019e5690-0757-7256-97c1-a3fe30b43107:
+  alias: house_4
+  name: House
+  description: A house.
+  exits:
+    east: 019e5690-0757-7256-97c1-a40d1b64f2bd
 019e5690-0757-7256-97c1-a3f6428a9cef:
+  alias: farmhouse_1
+  name: Modest Farmhouse
   description: A modest farmhouse.
   exits:
     north: 019e5690-0757-7256-97c1-a40a5c7974cc
     west: 019e5690-0757-7256-97c1-a3f85c5d1647
-  id: farmhouse_1
-  name: Modest Farmhouse
-019e5690-0757-7256-97c1-a3f74b7a2075:
-  description: A large farmhouse.
-  exits:
-    east: 019e5690-0757-7256-97c1-a40f318564b7
-    south: 019e5690-0757-7256-97c1-a3f530c22357
-  id: farmhouse_2
-  name: Large Farmhouse
-019e5690-0757-7256-97c1-a3f85c5d1647:
-  description: A field, bordered by drystone walls.
-  exits:
-    east: 019e5690-0757-7256-97c1-a3f6428a9cef
-    north: 019e5690-0757-7256-97c1-a409fc40cbd3
-    south: 019e5690-0757-7256-97c1-a40675f0c254
-  id: field_1
-  name: Field
-019e5690-0757-7256-97c1-a3f9f0e02faa:
-  description: A clearing in the forest. Light streams in through the canopy. Wild
-    flowers grow plentifully here.
-  exits:
-    east: 019e5690-0757-7256-97c1-a4152441286b
-    south: 019e5690-0757-7256-97c1-a4134fad40d8
-  id: grove
-  name: Grove
-019e5690-0757-7256-97c1-a3fabbff50d5:
-  description: A small herb garden, with planters full of all the herbs a cook could
-    want.
-  exits:
-    east: 019e5690-0757-7256-97c1-a401cf29efef
-    south: 019e5690-0757-7256-97c1-a417dfbf757d
-  id: herb_garden
-  name: Herb Garden
-019e5690-0757-7256-97c1-a3fbc1939802:
-  description: A house.
-  exits:
-    east: 019e5690-0757-7256-97c1-a40c45c0e09f
-    south: 019e5690-0757-7256-97c1-a4049eef9c36
-    west: 019e5690-0757-7256-97c1-a41eae01bcab
-  id: house_1
-  name: House
-019e5690-0757-7256-97c1-a3fca718651c:
-  description: A house.
-  exits:
-    north: 019e5690-0757-7256-97c1-a4049eef9c36
-  id: house_2
-  name: House
-019e5690-0757-7256-97c1-a3fdcc740a1f:
-  description: A house.
-  exits:
-    north: 019e5690-0757-7256-97c1-a411711682ae
-  id: house_3
-  name: House
-019e5690-0757-7256-97c1-a3fe30b43107:
-  description: A house.
-  exits:
-    east: 019e5690-0757-7256-97c1-a40d1b64f2bd
-  id: house_4
-  name: House
-019e5690-0757-7256-97c1-a3ff8dfefd2d:
-  description: A house.
-  exits:
-    west: 019e5690-0757-7256-97c1-a40d1b64f2bd
-  id: house_5
-  name: House
-019e5690-0757-7256-97c1-a40036168b93:
-  description: A small village inn. In the centre of the room is a roaring hearth.
-    A handful of stools rest against the bar. On the other side of the room, tables
-    are laid out for eating.
-  exits:
-    east: 019e5690-0757-7256-97c1-a402669aaf68
-    north: 019e5690-0757-7256-97c1-a403f4d347ca
-    south: 019e5690-0757-7256-97c1-a401cf29efef
-  id: inn
-  name: The Speared Fish
-019e5690-0757-7256-97c1-a401cf29efef:
-  description: A sunny garden behind the village inn, enclosed by a wooden fence.
-    There are a number of benches here.
-  exits:
-    north: 019e5690-0757-7256-97c1-a40036168b93
-    south: 019e5690-0757-7256-97c1-a41802b53ba3
-    west: 019e5690-0757-7256-97c1-a3fabbff50d5
-  id: inn_garden
-  name: The Speared Fish - Garden
-019e5690-0757-7256-97c1-a402669aaf68:
-  description: A hot kitchen. Several pots of stew are simmering over an open fire.
-    An oven smoulders in the corner.
-  exits:
-    west: 019e5690-0757-7256-97c1-a40036168b93
-  id: inn_kitchen
-  name: The Speared Fish - Kitchen
-019e5690-0757-7256-97c1-a403f4d347ca:
-  description: A small village square. Several traders have set up their stalls here.
-  exits:
-    east: 019e5690-0757-7256-97c1-a4078e68e7b2
-    north: 019e5690-0757-7256-97c1-a40c45c0e09f
-    south: 019e5690-0757-7256-97c1-a40036168b93
-    west: 019e5690-0757-7256-97c1-a4049eef9c36
-  id: market_east
-  name: Market Square - East
-019e5690-0757-7256-97c1-a4049eef9c36:
-  description: A small village square. A couple of traders have set up their stalls
-    here.
-  exits:
-    east: 019e5690-0757-7256-97c1-a403f4d347ca
-    north: 019e5690-0757-7256-97c1-a3fbc1939802
-    south: 019e5690-0757-7256-97c1-a3fca718651c
-    west: 019e5690-0757-7256-97c1-a411711682ae
-  id: market_west
-  name: Market Square - West
-019e5690-0757-7256-97c1-a405fc7ec126:
-  description: A small pear orchard.
-  exits:
-    south: 019e5690-0757-7256-97c1-a409fc40cbd3
-  id: orchard
-  name: Orchard
-019e5690-0757-7256-97c1-a40675f0c254:
-  description: A pond.
-  exits:
-    east: 019e5690-0757-7256-97c1-a41b27e3086e
-    north: 019e5690-0757-7256-97c1-a3f85c5d1647
-    south: 019e5690-0757-7256-97c1-a419a21c29de
-  id: pond
-  name: Pond
-019e5690-0757-7256-97c1-a4078e68e7b2:
-  description: A road.
-  exits:
-    east: 019e5690-0757-7256-97c1-a40850879569
-    north: 019e5690-0757-7256-97c1-a3f452c60933
-    west: 019e5690-0757-7256-97c1-a403f4d347ca
-  id: road_east_1
-  name: East Road
-019e5690-0757-7256-97c1-a40850879569:
-  description: A road.
-  exits:
-    east: 019e5690-0757-7256-97c1-a409fc40cbd3
-    west: 019e5690-0757-7256-97c1-a4078e68e7b2
-  id: road_east_2
-  name: East Road
-019e5690-0757-7256-97c1-a409fc40cbd3:
-  description: A road.
-  exits:
-    east: 019e5690-0757-7256-97c1-a40a5c7974cc
-    north: 019e5690-0757-7256-97c1-a405fc7ec126
-    south: 019e5690-0757-7256-97c1-a3f85c5d1647
-    west: 019e5690-0757-7256-97c1-a40850879569
-  id: road_east_3
-  name: East Road
-019e5690-0757-7256-97c1-a40a5c7974cc:
-  description: A road.
-  exits:
-    east: 019e5690-0757-7256-97c1-a40bf04c9bd0
-    south: 019e5690-0757-7256-97c1-a3f6428a9cef
-    west: 019e5690-0757-7256-97c1-a409fc40cbd3
-  id: road_east_4
-  name: East Road
-019e5690-0757-7256-97c1-a40bf04c9bd0:
-  description: A road.
-  exits:
-    south: 019e5690-0757-7256-97c1-a41d9acaac9c
-    west: 019e5690-0757-7256-97c1-a40a5c7974cc
-  id: road_east_5
-  name: East Road
-019e5690-0757-7256-97c1-a40c45c0e09f:
-  description: A road.
-  exits:
-    east: 019e5690-0757-7256-97c1-a3f452c60933
-    north: 019e5690-0757-7256-97c1-a40d1b64f2bd
-    south: 019e5690-0757-7256-97c1-a403f4d347ca
-    west: 019e5690-0757-7256-97c1-a3fbc1939802
-  id: road_north_1
-  name: North Road
-019e5690-0757-7256-97c1-a40d1b64f2bd:
-  description: A road.
-  exits:
-    east: 019e5690-0757-7256-97c1-a3ff8dfefd2d
-    north: 019e5690-0757-7256-97c1-a40e1371a1b4
-    south: 019e5690-0757-7256-97c1-a40c45c0e09f
-    west: 019e5690-0757-7256-97c1-a3fe30b43107
-  id: road_north_2
-  name: North Road
-019e5690-0757-7256-97c1-a40e1371a1b4:
-  description: A road.
-  exits:
-    north: 019e5690-0757-7256-97c1-a40f318564b7
-    south: 019e5690-0757-7256-97c1-a40d1b64f2bd
-    west: 019e5690-0757-7256-97c1-a3f530c22357
-  id: road_north_3
-  name: North Road
 019e5690-0757-7256-97c1-a40f318564b7:
+  alias: road_north_4
+  name: North Road
   description: A road.
   exits:
     north: 019e5690-0757-7256-97c1-a41070c59e66
     south: 019e5690-0757-7256-97c1-a40e1371a1b4
     west: 019e5690-0757-7256-97c1-a3f74b7a2075
-  id: road_north_4
+019e5690-0757-7256-97c1-a40d1b64f2bd:
+  alias: road_north_2
   name: North Road
-019e5690-0757-7256-97c1-a41070c59e66:
   description: A road.
   exits:
-    south: 019e5690-0757-7256-97c1-a40f318564b7
-    west: 019e5690-0757-7256-97c1-a41483a4ed49
-  id: road_north_5
-  name: North Road
-019e5690-0757-7256-97c1-a411711682ae:
-  description: A road.
-  exits:
-    east: 019e5690-0757-7256-97c1-a4049eef9c36
-    south: 019e5690-0757-7256-97c1-a3fdcc740a1f
-    west: 019e5690-0757-7256-97c1-a41222bb4beb
-  id: road_west_1
-  name: West Road
-019e5690-0757-7256-97c1-a41222bb4beb:
-  description: A road.
-  exits:
-    east: 019e5690-0757-7256-97c1-a411711682ae
-  id: road_west_2
-  name: West Road
-019e5690-0757-7256-97c1-a4134fad40d8:
-  description: A tiny hut, lit by candlelight. The smell of burning lavender wafts
-    through the room. In the centre is a table with various candles and crystals.
-  exits:
-    north: 019e5690-0757-7256-97c1-a3f9f0e02faa
-  id: seer_hut
-  name: Seer's Hut
-019e5690-0757-7256-97c1-a41483a4ed49:
-  description: A small stable.
-  exits:
-    east: 019e5690-0757-7256-97c1-a41070c59e66
-  id: stables
-  name: Stables
-019e5690-0757-7256-97c1-a4152441286b:
+    east: 019e5690-0757-7256-97c1-a3ff8dfefd2d
+    south: 019e5690-0757-7256-97c1-a40c45c0e09f
+    north: 019e5690-0757-7256-97c1-a40e1371a1b4
+    west: 019e5690-0757-7256-97c1-a3fe30b43107
+019e5690-0757-7256-97c1-a41d9acaac9c:
+  alias: stream_9
+  name: Stream
   description: A stream.
   exits:
-    north: 019e5690-0757-7256-97c1-a416d1ab8026
-    west: 019e5690-0757-7256-97c1-a3f9f0e02faa
-  id: stream_1
-  name: Stream
-019e5690-0757-7256-97c1-a416d1ab8026:
-  description: A stream.
-  exits:
-    east: 019e5690-0757-7256-97c1-a417dfbf757d
-    south: 019e5690-0757-7256-97c1-a4152441286b
-  id: stream_2
-  name: Stream
-019e5690-0757-7256-97c1-a417dfbf757d:
-  description: A stream.
-  exits:
-    east: 019e5690-0757-7256-97c1-a41802b53ba3
-    north: 019e5690-0757-7256-97c1-a3fabbff50d5
-    west: 019e5690-0757-7256-97c1-a416d1ab8026
-  id: stream_3
-  name: Stream
-019e5690-0757-7256-97c1-a41802b53ba3:
-  description: A stream.
-  exits:
-    east: 019e5690-0757-7256-97c1-a419a21c29de
-    north: 019e5690-0757-7256-97c1-a401cf29efef
-    west: 019e5690-0757-7256-97c1-a417dfbf757d
-  id: stream_4
-  name: Stream
-019e5690-0757-7256-97c1-a419a21c29de:
-  description: A stream.
-  exits:
-    east: 019e5690-0757-7256-97c1-a41af3ce941f
-    north: 019e5690-0757-7256-97c1-a40675f0c254
-    west: 019e5690-0757-7256-97c1-a41802b53ba3
-  id: stream_5
-  name: Stream
-019e5690-0757-7256-97c1-a41af3ce941f:
-  description: A stream.
-  exits:
-    north: 019e5690-0757-7256-97c1-a41b27e3086e
-    west: 019e5690-0757-7256-97c1-a419a21c29de
-  id: stream_6
-  name: Stream
+    north: 019e5690-0757-7256-97c1-a40bf04c9bd0
+    south: 019e5690-0757-7256-97c1-a41c6552ad3b
 019e5690-0757-7256-97c1-a41b27e3086e:
+  alias: stream_7
+  name: Stream
   description: A stream.
   exits:
     east: 019e5690-0757-7256-97c1-a41c6552ad3b
     south: 019e5690-0757-7256-97c1-a41af3ce941f
     west: 019e5690-0757-7256-97c1-a40675f0c254
-  id: stream_7
+019e704f-edbd-7381-a33a-790b1cf06fb6:
+  alias: inside_seer_hut
+  name: Inside the Seer's Hut
+  description: A cramped room, with walls of stone. The space is dimly lit by candlelight. The smell of lavender wafts through the air.
+  exits:
+    north: 019e5690-0757-7256-97c1-a4134fad40d8
+019e5690-0757-7256-97c1-a41483a4ed49:
+  alias: stables
+  name: Stables
+  description: A small stable.
+  exits:
+    east: 019e5690-0757-7256-97c1-a41070c59e66
+019e5690-0757-7256-97c1-a3f74b7a2075:
+  alias: farmhouse_2
+  name: Large Farmhouse
+  description: A large farmhouse.
+  exits:
+    south: 019e5690-0757-7256-97c1-a3f530c22357
+    east: 019e5690-0757-7256-97c1-a40f318564b7
+019e5690-0757-7256-97c1-a411711682ae:
+  alias: road_west_1
+  name: West Road
+  description: A road.
+  exits:
+    east: 019e5690-0757-7256-97c1-a4049eef9c36
+    west: 019e5690-0757-7256-97c1-a41222bb4beb
+    south: 019e5690-0757-7256-97c1-a3fdcc740a1f
+019e5690-0757-7256-97c1-a40675f0c254:
+  alias: pond
+  name: Pond
+  description: A pond.
+  exits:
+    east: 019e5690-0757-7256-97c1-a41b27e3086e
+    north: 019e5690-0757-7256-97c1-a3f85c5d1647
+    south: 019e5690-0757-7256-97c1-a419a21c29de
+019e5690-0757-7256-97c1-a416d1ab8026:
+  alias: stream_2
   name: Stream
-019e5690-0757-7256-97c1-a41c6552ad3b:
   description: A stream.
   exits:
-    north: 019e5690-0757-7256-97c1-a41d9acaac9c
-    west: 019e5690-0757-7256-97c1-a41b27e3086e
-  id: stream_8
+    east: 019e5690-0757-7256-97c1-a417dfbf757d
+    south: 019e5690-0757-7256-97c1-a4152441286b
+019e5690-0757-7256-97c1-a40850879569:
+  alias: road_east_2
+  name: East Road
+  description: A road.
+  exits:
+    east: 019e5690-0757-7256-97c1-a409fc40cbd3
+    west: 019e5690-0757-7256-97c1-a4078e68e7b2
+019e5690-0757-7256-97c1-a41070c59e66:
+  alias: road_north_5
+  name: North Road
+  description: A road.
+  exits:
+    south: 019e5690-0757-7256-97c1-a40f318564b7
+    west: 019e5690-0757-7256-97c1-a41483a4ed49
+019e5690-0757-7256-97c1-a3fbc1939802:
+  alias: house_1
+  name: House
+  description: A house.
+  exits:
+    south: 019e5690-0757-7256-97c1-a4049eef9c36
+    west: 019e5690-0757-7256-97c1-a41eae01bcab
+    east: 019e5690-0757-7256-97c1-a40c45c0e09f
+019e5690-0757-7256-97c1-a41802b53ba3:
+  alias: stream_4
   name: Stream
-019e5690-0757-7256-97c1-a41d9acaac9c:
   description: A stream.
   exits:
-    north: 019e5690-0757-7256-97c1-a40bf04c9bd0
-    south: 019e5690-0757-7256-97c1-a41c6552ad3b
-  id: stream_9
+    east: 019e5690-0757-7256-97c1-a419a21c29de
+    north: 019e5690-0757-7256-97c1-a401cf29efef
+    west: 019e5690-0757-7256-97c1-a417dfbf757d
+019e5690-0757-7256-97c1-a409fc40cbd3:
+  alias: road_east_3
+  name: East Road
+  description: A road.
+  exits:
+    north: 019e5690-0757-7256-97c1-a405fc7ec126
+    east: 019e5690-0757-7256-97c1-a40a5c7974cc
+    south: 019e5690-0757-7256-97c1-a3f85c5d1647
+    west: 019e5690-0757-7256-97c1-a40850879569
+019e5690-0757-7256-97c1-a40e1371a1b4:
+  alias: road_north_3
+  name: North Road
+  description: A road.
+  exits:
+    north: 019e5690-0757-7256-97c1-a40f318564b7
+    west: 019e5690-0757-7256-97c1-a3f530c22357
+    south: 019e5690-0757-7256-97c1-a40d1b64f2bd
+019e5690-0757-7256-97c1-a40c45c0e09f:
+  alias: road_north_1
+  name: North Road
+  description: A road.
+  exits:
+    south: 019e5690-0757-7256-97c1-a403f4d347ca
+    west: 019e5690-0757-7256-97c1-a3fbc1939802
+    north: 019e5690-0757-7256-97c1-a40d1b64f2bd
+    east: 019e5690-0757-7256-97c1-a3f452c60933
+019e5690-0757-7256-97c1-a417dfbf757d:
+  alias: stream_3
   name: Stream
+  description: A stream.
+  exits:
+    east: 019e5690-0757-7256-97c1-a41802b53ba3
+    north: 019e5690-0757-7256-97c1-a3fabbff50d5
+    west: 019e5690-0757-7256-97c1-a416d1ab8026
+019e5690-0757-7256-97c1-a401cf29efef:
+  alias: inn_garden
+  name: The Speared Fish - Garden
+  description: A sunny garden behind the village inn, enclosed by a wooden fence. There are a number of benches here.
+  exits:
+    west: 019e5690-0757-7256-97c1-a3fabbff50d5
+    north: 019e5690-0757-7256-97c1-a40036168b93
+    south: 019e5690-0757-7256-97c1-a41802b53ba3
+019e5690-0757-7256-97c1-a40036168b93:
+  alias: inn
+  name: The Speared Fish
+  description: A small village inn. In the centre of the room is a roaring hearth. A handful of stools rest against the bar. On the other side of the room, tables are laid out for eating.
+  exits:
+    east: 019e5690-0757-7256-97c1-a402669aaf68
+    north: 019e5690-0757-7256-97c1-a403f4d347ca
+    south: 019e5690-0757-7256-97c1-a401cf29efef
+019e5690-0757-7256-97c1-a402669aaf68:
+  alias: inn_kitchen
+  name: The Speared Fish - Kitchen
+  description: A hot kitchen. Several pots of stew are simmering over an open fire. An oven smoulders in the corner.
+  exits:
+    west: 019e5690-0757-7256-97c1-a40036168b93
+019e5690-0757-7256-97c1-a3f452c60933:
+  alias: bookshop
+  name: Bookshop
+  description: A cozy bookshop, with shelves lining each wall. The owner is sitting in a comfortable chair by the entrance, leafing through a small book.
+  exits:
+    south: 019e5690-0757-7256-97c1-a4078e68e7b2
+    west: 019e5690-0757-7256-97c1-a40c45c0e09f
 019e5690-0757-7256-97c1-a41eae01bcab:
-  description: A blacksmith's workshop. The forge bathes the room in a red glow. Tools
-    are hanging on the wall above the forge, while unfinished projects are scattered
-    on the various tables.
+  alias: workshop
+  name: Blacksmith's Workshop
+  description: A blacksmith's workshop. The forge bathes the room in a red glow. Tools are hanging on the wall above the forge, while unfinished projects are scattered on the various tables.
   exits:
     east: 019e5690-0757-7256-97c1-a3fbc1939802
-  id: workshop
-  name: Blacksmith's Workshop
+019e5690-0757-7256-97c1-a4152441286b:
+  alias: stream_1
+  name: Stream
+  description: A stream.
+  exits:
+    south: 019e702f-c2f0-7e82-8896-21d5a98ceadb
+    north: 019e5690-0757-7256-97c1-a416d1ab8026
+    west: 019e5690-0757-7256-97c1-a3f9f0e02faa
+019e5690-0757-7256-97c1-a405fc7ec126:
+  alias: orchard
+  name: Orchard
+  description: A small pear orchard.
+  exits:
+    south: 019e5690-0757-7256-97c1-a409fc40cbd3
+019e5690-0757-7256-97c1-a3fca718651c:
+  alias: house_2
+  name: House
+  description: A house.
+  exits:
+    north: 019e5690-0757-7256-97c1-a4049eef9c36
+019e5690-0757-7256-97c1-a41222bb4beb:
+  alias: road_west_2
+  name: West Road
+  description: A road.
+  exits:
+    east: 019e5690-0757-7256-97c1-a411711682ae
+019e5690-0757-7256-97c1-a3f85c5d1647:
+  alias: field_1
+  name: Field
+  description: A field, bordered by drystone walls.
+  exits:
+    north: 019e5690-0757-7256-97c1-a409fc40cbd3
+    south: 019e5690-0757-7256-97c1-a40675f0c254
+    east: 019e5690-0757-7256-97c1-a3f6428a9cef

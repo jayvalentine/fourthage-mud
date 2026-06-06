@@ -16,17 +16,22 @@ impl From<sqlx::Error> for DatabaseError {
 pub struct AccountRow {
     pub id: EntityId,
     pub username: String,
+    pub is_admin: bool,
     pub password_hash: String
 }
 
 pub async fn get_account(pool: &PgPool, username: &str) -> Result<Option<AccountRow>, DatabaseError> {
     let account = sqlx::query!(
-        "SELECT id, username, password_hash FROM accounts WHERE username = $1",
+        "SELECT id, username, is_admin, password_hash FROM accounts WHERE username = $1",
         username
     ).fetch_optional(pool).await?;
 
     match account {
-        Some(row) => Ok(Some(AccountRow { id: EntityId::from_uuid(row.id), username: row.username, password_hash: row.password_hash })),
+        Some(row) => Ok(Some(AccountRow {
+            id: EntityId::from_uuid(row.id),
+            username: row.username,
+            is_admin: row.is_admin,
+            password_hash: row.password_hash })),
         None => Ok(None)
     }
 }
@@ -34,12 +39,12 @@ pub async fn get_account(pool: &PgPool, username: &str) -> Result<Option<Account
 pub async fn create_account(pool: &PgPool, username: &str, password_hash: &str) -> Result<AccountRow, DatabaseError> {
     let row = sqlx::query!(
         "INSERT INTO accounts (username, password_hash) VALUES ($1, $2)
-         RETURNING id, username, password_hash",
+         RETURNING id, username, is_admin, password_hash",
         username,
         password_hash
     ).fetch_one(pool).await?;
 
-    Ok(AccountRow { id: EntityId::from_uuid(row.id), username: row.username, password_hash: row.password_hash })
+    Ok(AccountRow { id: EntityId::from_uuid(row.id), username: row.username, is_admin: row.is_admin, password_hash: row.password_hash })
 }
 
 pub async fn update_position(pool: &PgPool, id: &EntityId, room_id: &RoomId) -> Result<(), DatabaseError> {

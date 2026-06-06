@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use uuid::Uuid;
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
@@ -13,6 +15,12 @@ impl EntityId {
     }
 }
 
+impl Display for EntityId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_uuid())
+    }
+}
+
 #[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
 pub struct RoomId(EntityId);
 
@@ -25,11 +33,23 @@ impl RoomId {
         RoomId(EntityId(id))
     }
 
+    /// Generate a new unique ID.
+    pub fn generate() -> RoomId {
+        let uuid = uuid::Uuid::now_v7();
+        RoomId(EntityId(uuid))
+    }
+
     pub fn as_entity(&self) -> EntityId {
         self.0
     }
 
     pub fn as_uuid(&self) -> Uuid {
         self.0.as_uuid()
+    }
+}
+
+impl Display for RoomId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_uuid())
     }
 }
