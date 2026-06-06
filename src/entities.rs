@@ -1,71 +1,65 @@
 use core::fmt;
-use std::{collections::{HashMap, HashSet}, sync::{PoisonError, RwLock}};
+use std::collections::{HashMap, HashSet};
+use parking_lot::RwLock;
 
-use crate::{event::{EventTarget, EventTargetResolver}, model::ids::{RoomId, EntityId}};
+use crate::{event::{EventTarget, EventTargetResolver}, model::ids::EntityId};
 
-struct PositionMap {
-    position_by_id: HashMap<EntityId, Position>,
-    id_by_position: HashMap<Position, HashSet<EntityId>>
+struct LocationMap {
+    location_by_id: HashMap<EntityId, Location>,
+    id_by_location: HashMap<Location, HashSet<EntityId>>
 }
 
-impl PositionMap {
-    pub fn new() -> PositionMap {
-        PositionMap {
-            position_by_id: HashMap::new(),
-            id_by_position: HashMap::new()
+impl LocationMap {
+    pub fn new() -> LocationMap {
+        LocationMap {
+            location_by_id: HashMap::new(),
+            id_by_location: HashMap::new()
         }
     }
 
-    pub fn update_position(&mut self, id: &EntityId, new_position: Position) {
+    pub fn update_position(&mut self, id: &EntityId, new_location: Location) {
         // Remove entry from set for old position if present.
         // Entity may not be present, e.g. if this is the first time the position is being set.
-        if let Some(p) = self.position_by_id.get(id) {
-            if let Some(entry) = self.id_by_position.get_mut(p) {
+        if let Some(p) = self.location_by_id.get(id) {
+            if let Some(entry) = self.id_by_location.get_mut(p) {
                 entry.remove(id);
             }
         }
 
         // Add entity to map for new position.
-        self.id_by_position
-            .entry(new_position.clone()).or_default()
+        self.id_by_location
+            .entry(new_location.clone()).or_default()
             .insert(id.clone());
 
         // Update position in ID mapping.
-        self.position_by_id.insert(id.clone(), new_position);
+        self.location_by_id.insert(id.clone(), new_location);
     }
 
     /// Remove the position of the given entity from the map.
     pub fn remove_position(&mut self, id: &EntityId) {
-        if let Some(p) = self.position_by_id.get(id) {
-            if let Some(entry) = self.id_by_position.get_mut(p) {
+        if let Some(p) = self.location_by_id.get(id) {
+            if let Some(entry) = self.id_by_location.get_mut(p) {
                 entry.remove(id);
             }
         }
 
-        self.position_by_id.remove(id);
+        self.location_by_id.remove(id);
     }
 
-    pub fn get_at_position(&self, position: &Position) -> Option<&HashSet<EntityId>> {
-        self.id_by_position.get(position)
+    pub fn get_at_position(&self, position: &Location) -> Option<&HashSet<EntityId>> {
+        self.id_by_location.get(position)
     }
 }
 
 #[derive(Debug)]
 pub enum EntityRegistryError {
-    InvalidMutex,
     UnknownEntity(EntityId),
     DuplicateSpawn(EntityId)
 }
 
-impl<T> From<PoisonError<T>> for EntityRegistryError {
-    fn from(_: PoisonError<T>) -> Self {
-        EntityRegistryError::InvalidMutex
-    }
-}
-
 struct EntityRegistryInternal {
     entities: HashSet<EntityId>,
-    positions: PositionMap,
+    positions: LocationMap,
     names: HashMap<EntityId, Name>,
     players: HashMap<EntityId, Player>
 }
@@ -92,7 +86,7 @@ impl EntityRegistry {
     pub fn new() -> EntityRegistry {
         let internal = EntityRegistryInternal {
             entities: HashSet::new(),
-            positions: PositionMap::new(),
+            positions: LocationMap::new(),
             names: HashMap::new(),
             players: HashMap::new()
         };
@@ -102,7 +96,7 @@ impl EntityRegistry {
     }
 
     pub fn spawn(&self, entity_id: EntityId) -> Result<EntityId, EntityRegistryError> {
-        let mut internal = self.internal.write()?;
+        let mut internal = self.internal.write();
         if internal.entities.contains(&entity_id) {
             return Err(EntityRegistryError::DuplicateSpawn(entity_id))
         }
@@ -113,11 +107,11 @@ impl EntityRegistry {
     }
 
     pub fn despawn(&self, id: &EntityId) -> Result<(), EntityRegistryError> {
-        let mut internal = self.internal.write()?;
+        let mut internal = self.internal.write();
         Self::validate_entity(&internal, id)?;
 
         // When new component types are added, they must be removed here.
-        Position::remove(&mut internal, id);
+        Location::remove(&mut internal, id);
         Name::remove(&mut internal, id);
         Player::remove(&mut internal, id);
 
@@ -127,15 +121,22 @@ impl EntityRegistry {
     }
 
     #[allow(private_bounds)]
+    pub fn has_component<T: ComponentStorage>(&self, e: &EntityId) -> Result<bool, EntityRegistryError> {
+        let internal = self.internal.read();
+        Self::validate_entity(&internal, e)?;
+        Ok(T::get(&internal, e).is_some())
+    }
+
+    #[allow(private_bounds)]
     pub fn get_component<T: ComponentStorage + Clone>(&self, e: &EntityId) -> Result<Option<T>, EntityRegistryError> {
-        let internal = self.internal.read()?;
+        let internal = self.internal.read();
         Self::validate_entity(&internal, e)?;
         Ok(T::get(&internal, e).cloned())
     }
 
     #[allow(private_bounds)]
     pub fn remove_component<T: ComponentStorage>(&self, e: &EntityId) -> Result<(), EntityRegistryError> {
-        let mut internal = self.internal.write()?;
+        let mut internal = self.internal.write();
         Self::validate_entity(&internal, e)?;
         T::remove(&mut internal, e);
         Ok(())
@@ -143,7 +144,7 @@ impl EntityRegistry {
 
     #[allow(private_bounds)]
     pub fn update_component<T: ComponentStorage>(&self, e: &EntityId, c: T) -> Result<(), EntityRegistryError> {
-        let mut internal = self.internal.write()?;
+        let mut internal = self.internal.write();
         Self::validate_entity(&internal, e)?;
         T::update(&mut internal, e, c);
 
@@ -156,9 +157,28 @@ impl EntityRegistry {
         T: ComponentStorage,
         F: FnOnce(&mut dyn Iterator<Item = (&EntityId, &T)>) -> Result<R, EntityRegistryError>
     {
-        let internal = self.internal.read()?;
+        let internal = self.internal.read();
 
         let mut iter = T::storage(&internal).iter();
+        f(&mut iter)
+    }
+
+    #[allow(private_bounds)]
+    pub fn query_location<T, R, F>(&self, location: &Location, f: F) -> Result<R, EntityRegistryError>
+    where
+        T: ComponentStorage + Clone,
+        F: FnOnce(&mut dyn Iterator<Item = (&EntityId, &T)>) -> Result<R, EntityRegistryError>
+    {
+        let internal = self.internal.read();
+
+        let entities_in_location = internal.positions.id_by_location.get(location);
+
+        let storage = T::storage(&internal);
+        let mut iter = entities_in_location.iter()
+            .into_iter()
+            .flat_map(|ids| ids.iter())
+            .filter_map(|id| storage.get(id).map(|c| (id, c)));
+
         f(&mut iter)
     }
 
@@ -169,7 +189,7 @@ impl EntityRegistry {
         T2: ComponentStorage,
         F: FnOnce(&mut dyn Iterator<Item = (&EntityId, (&T1, &T2))>) -> Result<R, EntityRegistryError>
     {
-        let internal = self.internal.read()?;
+        let internal = self.internal.read();
 
         let storage1 = T1::storage(&internal);
         let storage2 = T2::storage(&internal);
@@ -201,10 +221,10 @@ impl EventTargetResolver<EntityRegistryError> for EntityRegistry {
     fn resolve(&self, target: &EventTarget) -> Result<Vec<EntityId>, EntityRegistryError> {
         match target {
             EventTarget::Entity(id) => Ok(vec![id.clone()]),
-            EventTarget::RoomExcept(room_id, entity_id) => {
-                let internal = self.internal.read()?;
+            EventTarget::LocationExcept(location, entity_id) => {
+                let internal = self.internal.read();
 
-                let targets = match internal.positions.get_at_position(&Position { room: room_id.clone() }) {
+                let targets = match internal.positions.get_at_position(&location) {
                     Some(entities) => entities.iter().map(|e| e.clone()).filter(|e| e != entity_id).collect(),
                     None => Vec::new()
                 };
@@ -215,15 +235,15 @@ impl EventTargetResolver<EntityRegistryError> for EntityRegistry {
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
-pub struct Position {
-    pub room: RoomId
+pub struct Location {
+    pub value: EntityId
 }
 
-impl ComponentStorage for Position {
+impl ComponentStorage for Location {
     fn get<'a>(entities: &'a EntityRegistryInternal, entity: &EntityId) -> Option<&'a Self>
     where Self: Sized
     {
-        entities.positions.position_by_id.get(entity)
+        entities.positions.location_by_id.get(entity)
     }
 
     fn update(entities: &mut EntityRegistryInternal, entity: &EntityId, component: Self)
@@ -241,7 +261,7 @@ impl ComponentStorage for Position {
     fn storage(entities: &EntityRegistryInternal) -> &HashMap<EntityId, Self>
     where Self: Sized
     {
-        &entities.positions.position_by_id
+        &entities.positions.location_by_id
     }
 }
 
@@ -313,6 +333,7 @@ impl ComponentStorage for Player {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::ids::RoomId;
 
     /// Tests that components can be updated and retrieved for entities.
     #[test]
@@ -329,5 +350,37 @@ mod tests {
 
         let name2 = entities.get_component::<Name>(&e2).unwrap();
         assert!(name2.is_none())
+    }
+
+    /// Tests that components can be queried by location.
+    #[test]
+    fn test_get_component_by_location() {
+        let entities = EntityRegistry::new();
+
+        let e1 = entities.spawn(EntityId::generate()).unwrap();
+        let e2 = entities.spawn(EntityId::generate()).unwrap();
+        let e3 = entities.spawn(EntityId::generate()).unwrap();
+
+        let room1 = RoomId::generate();
+        let room2 = RoomId::generate();
+        let loc1 = Location { value: room1.as_entity() };
+        let loc2 = Location { value: room2.as_entity() };
+
+        entities.update_component(&e1, loc1.clone()).unwrap();
+        entities.update_component(&e1, Name { value: "entity 1".to_string() }).unwrap();
+        entities.update_component(&e2, loc1.clone()).unwrap();
+        entities.update_component(&e3, loc2.clone()).unwrap();
+        entities.update_component(&e3, Name { value: "entity 3".to_string() }).unwrap();
+
+        entities.query_location::<Name, _, _>(&loc1, |iter| {
+            let (e, n) = iter.next().unwrap();
+
+            // Only one entity is expected since only one exists in the location with a Name.
+            assert_eq!(&e1, e);
+            assert_eq!("entity 1", n.value);
+
+            assert!(iter.next().is_none());
+            Ok(())
+        });
     }
 }

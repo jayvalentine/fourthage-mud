@@ -2,11 +2,14 @@ use std::{collections::HashMap, sync::{Mutex, PoisonError}};
 
 use tokio::sync::mpsc::{self, error::SendError};
 
-use crate::model::ids::{EntityId, RoomId};
+use crate::{entities::Location, model::ids::EntityId};
 
 pub enum EventTarget {
+    /// The named entity.
     Entity(EntityId),
-    RoomExcept(RoomId, EntityId)
+
+    /// All entities in the given location, except the named entity.
+    LocationExcept(Location, EntityId)
 }
 
 #[derive(Clone, Debug)]

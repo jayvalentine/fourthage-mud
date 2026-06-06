@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::entities::{EntityRegistryError, Name, Player, Position};
+use crate::entities::{EntityRegistryError, Name, Player, Location};
 use crate::event::{Event, EventTarget, GameEvent};
 use crate::model::world::{DirectionParseError, Room};
 use crate::model::{world::Direction, ids::{EntityId, RoomId}};
@@ -211,10 +211,11 @@ impl Command {
     }
 }
 
-fn get_current_position(context: &SessionContext) -> Result<Position, CommandExecutionError> {
-    context.entities.get_component::<Position>(&context.player_id)
+fn get_current_position(context: &SessionContext) -> Result<RoomId, CommandExecutionError> {
+    context.entities.get_component::<Location>(&context.player_id)
         .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {:?}", &context.player_id)))?
         .ok_or(CommandExecutionError::Unrecoverable(format!("Entity {:?} has no position component", &context.player_id)))
+        .map(|l| RoomId::from_entity(l.value))
 }
 
 fn get_room_description(context: &SessionContext, id: &RoomId) -> Result<String, CommandExecutionError> {
@@ -231,8 +232,8 @@ fn get_room_description(context: &SessionContext, id: &RoomId) -> Result<String,
 }
 
 async fn handle_go(context: &mut SessionContext, direction: Direction) -> Result<CommandResult, CommandExecutionError> {
-    let position = get_current_position(context)?;
-    let current_room = context.world.get_room(&position.room)
+    let current_room_id = get_current_position(context)?;
+    let current_room = context.world.get_room(&current_room_id)
         .ok_or(CommandExecutionError::Unrecoverable("Could not retrieve room based on current room ID".into()))?;
 
     let destination_room_id = match current_room.get_destination(direction) {
@@ -240,7 +241,7 @@ async fn handle_go(context: &mut SessionContext, direction: Direction) -> Result
         None => return Ok(CommandResult::Query(QueryResult { response: format!("You cannot go {direction} from here.") }))
     };
 
-    let new_position = Position { room: destination_room_id.clone() };
+    let new_position = Location { value: destination_room_id.as_entity().clone() };
     context.entities.update_component(&context.player_id, new_position.clone())
         .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not update position of entity '{:?}'", &context.player_id)))?;
     persistence::persist_position(&context.player_id, &new_position, &context.pool)
@@ -257,14 +258,14 @@ fn handle_say(context: &SessionContext, sentence: &str) -> Result<CommandResult,
     let name = context.entities.get_component::<Name>(&context.player_id)
         .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get name for entity: {:?}", context.player_id)))?
         .ok_or(CommandExecutionError::Unrecoverable(format!("Entity {:?} had no Name component", context.player_id)))?;
-    let position = context.entities.get_component::<Position>(&context.player_id)
+    let position = context.entities.get_component::<Location>(&context.player_id)
         .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {:?}", &context.player_id)))?
         .ok_or(CommandExecutionError::Unrecoverable(format!("Entity {:?} has no position component", &context.player_id)))?;
     let message = format!("{name} says: {sentence}");
     let result = ActionResult {
         events: vec![
             Event {
-                target: EventTarget::RoomExcept(position.room, context.player_id.clone()),
+                target: EventTarget::LocationExcept(position, context.player_id.clone()),
                 event: GameEvent::Message(message)
             }
         ],
@@ -298,10 +299,10 @@ fn handle_who(context: &SessionContext) -> Result<CommandResult, CommandExecutio
 }
 
 fn handle_look(context: &SessionContext) -> Result<CommandResult, CommandExecutionError> {
-    let position = context.entities.get_component::<Position>(&context.player_id)
+    let position = context.entities.get_component::<Location>(&context.player_id)
         .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {:?}", &context.player_id)))?
         .ok_or(CommandExecutionError::Unrecoverable(format!("Entity {:?} has no position component", &context.player_id)))?;
-    let response = get_room_description(context, &position.room)?;
+    let response = get_room_description(context, &RoomId::from_entity(position.value))?;
     Ok(CommandResult::Query(QueryResult { response }))
 }
 
@@ -310,17 +311,17 @@ fn handle_edit(context: &SessionContext, field: EditField, content: String) -> R
         return Ok(CommandResult::Unauthorized)
     }
 
-    let position = get_current_position(context)?;
-    let response = if let Some(room) = context.world.get_room(&position.room) {
+    let current_room_id = get_current_position(context)?;
+    let response = if let Some(room) = context.world.get_room(&current_room_id) {
         let mut updated = Room::clone(&room);
         match field {
             EditField::Description => { updated.set_description(content); },
             EditField::Name => { updated.set_name(content); }
         }
-        context.world.update_room(position.room.clone(), updated);
+        context.world.update_room(current_room_id, updated);
         CommandResult::Query(QueryResult { response: "Updated room.".into() })
     } else {
-        CommandResult::Query(QueryResult { response: format!("Cannot update room '{0:?}'", position.room) })
+        CommandResult::Query(QueryResult { response: format!("Cannot update room '{0:?}'", current_room_id) })
     };
     Ok(response)
 }
@@ -352,10 +353,10 @@ fn handle_link(context: &SessionContext, direction: Direction, target: String) -
         return Ok(CommandResult::Unauthorized)
     }
 
-    let position = get_current_position(context)?;
-    let current_room = match context.world.get_room(&position.room) {
+    let current_room_id = get_current_position(context)?;
+    let current_room = match context.world.get_room(&current_room_id) {
         Some(r) => r,
-        None => return Ok(CommandResult::Query(format!("Could not get current room (ID: {0})", position.room).into()))
+        None => return Ok(CommandResult::Query(format!("Could not get current room (ID: {0})", current_room_id).into()))
     };
 
     let other_room_id = match context.world.resolve_alias(&target) {
@@ -380,11 +381,11 @@ fn handle_link(context: &SessionContext, direction: Direction, target: String) -
     let mut other_room = Room::clone(&other_room);
 
     current_room.set_exit(direction, other_room_id.clone());
-    other_room.set_exit(opposite_direction, position.room.clone());
+    other_room.set_exit(opposite_direction, current_room_id);
 
     let response = format!("Linked '{0}' to '{1}'", current_room.alias(), other_room.alias());
 
-    context.world.update_room(position.room, current_room);
+    context.world.update_room(current_room_id, current_room);
     context.world.update_room(other_room_id, other_room);
 
     Ok(CommandResult::Query(response.into()))
@@ -395,10 +396,10 @@ fn handle_unlink(context: &SessionContext, direction: Direction) -> Result<Comma
         return Ok(CommandResult::Unauthorized)
     }
 
-    let position = get_current_position(context)?;
-    let current_room = match context.world.get_room(&position.room) {
+    let current_room_id = get_current_position(context)?;
+    let current_room = match context.world.get_room(&current_room_id) {
         Some(r) => r,
-        None => return Ok(CommandResult::Query(format!("Could not get current room (ID: {0})", position.room).into()))
+        None => return Ok(CommandResult::Query(format!("Could not get current room (ID: {0})", current_room_id).into()))
     };
 
     if !current_room.has_exit(&direction) {
@@ -422,7 +423,7 @@ fn handle_unlink(context: &SessionContext, direction: Direction) -> Result<Comma
 
     let response = format!("Removed link between '{0}' and '{1}'", current_room.alias(), other_room.alias());
 
-    context.world.update_room(position.room, current_room);
+    context.world.update_room(current_room_id, current_room);
     context.world.update_room(other_room_id.clone(), other_room);
 
     Ok(CommandResult::Query(response.into()))
@@ -433,10 +434,10 @@ fn handle_create(context: &SessionContext, direction: Direction, target: String)
         return Ok(CommandResult::Unauthorized)
     }
 
-    let position = get_current_position(context)?;
-    let current_room = match context.world.get_room(&position.room) {
+    let current_room_id = get_current_position(context)?;
+    let current_room = match context.world.get_room(&current_room_id) {
         Some(r) => r,
-        None => return Ok(CommandResult::Query(format!("Could not get current room (ID: {0})", position.room).into()))
+        None => return Ok(CommandResult::Query(format!("Could not get current room (ID: {0})", current_room_id).into()))
     };
 
     if current_room.has_exit(&direction) {
@@ -448,11 +449,11 @@ fn handle_create(context: &SessionContext, direction: Direction, target: String)
     let mut other_room = Room::new(target, "Unnamed Room".into(), "This room has no description.".into(), HashMap::new());
 
     current_room.set_exit(direction, other_room_id.clone());
-    other_room.set_exit(direction.opposite(), position.room.clone());
+    other_room.set_exit(direction.opposite(), current_room_id.clone());
 
     let response = format!("Created room '{0}' to the {1}.", other_room.alias(), direction);
 
-    context.world.update_room(position.room, current_room);
+    context.world.update_room(current_room_id, current_room);
     context.world.update_room(other_room_id, other_room);
 
     Ok(CommandResult::Query(QueryResult { response }))
@@ -463,10 +464,10 @@ fn handle_roominfo(context: &SessionContext) -> Result<CommandResult, CommandExe
         return Ok(CommandResult::Unauthorized)
     }
 
-    let position = get_current_position(context)?;
-    let current_room = match context.world.get_room(&position.room) {
+    let current_room_id = get_current_position(context)?;
+    let current_room = match context.world.get_room(&current_room_id) {
         Some(r) => r,
-        None => return Ok(CommandResult::Query(format!("Could not get current room (ID: {0})", position.room).into()))
+        None => return Ok(CommandResult::Query(format!("Could not get current room (ID: {0})", current_room_id).into()))
     };
 
     let mut exits: Vec<String> = Vec::new();
@@ -482,7 +483,7 @@ fn handle_roominfo(context: &SessionContext) -> Result<CommandResult, CommandExe
         exits.push(format!("{0}: {1} ({2})", exit, destination.alias(), destination_id));
     }
 
-    let response = format!("{0} ({1})\n\n{2}", current_room.alias(), position.room, exits.join("\n"));
+    let response = format!("{0} ({1})\n\n{2}", current_room.alias(), current_room_id, exits.join("\n"));
     Ok(CommandResult::Query(response.into()))
 }
 
