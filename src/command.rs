@@ -524,7 +524,11 @@ fn handle_spawn(context: &SessionContext, target: SpawnTarget, alias: String) ->
     
     let current_room_id = get_current_position(context)?;
 
-    let entity_id = context.entities.spawn(None, alias.clone().into())?;
+    let entity_id = match context.entities.spawn(None, alias.clone().into()) {
+        Ok(id) => id,
+        Err(EntityRegistryError::DuplicateAlias(a)) => return Ok(CommandResult::Query(format!("An entity already exists with alias '{a}'").into())),
+        _ => return Ok(CommandResult::Query(format!("An unknown error occurred spawning the item.").into()))
+    };
 
     let location = Location { value: current_room_id.as_entity() };
     context.entities.update_component(&entity_id, location)?;
