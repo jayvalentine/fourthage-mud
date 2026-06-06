@@ -1,8 +1,29 @@
 use core::fmt;
-use std::collections::{HashMap, HashSet};
+use std::{collections::{HashMap, HashSet}, fmt::Display};
 use parking_lot::RwLock;
 
 use crate::{event::{EventTarget, EventTargetResolver}, model::ids::EntityId};
+
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct Alias(String);
+
+impl From<String> for Alias {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for Alias {
+    fn from(value: &str) -> Self {
+        Alias(value.to_string())
+    }
+}
+
+impl Display for Alias {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 struct LocationMap {
     location_by_id: HashMap<EntityId, Location>,
@@ -54,11 +75,13 @@ impl LocationMap {
 #[derive(Debug)]
 pub enum EntityRegistryError {
     UnknownEntity(EntityId),
-    DuplicateSpawn(EntityId)
+    DuplicateSpawn(EntityId),
+    DuplicateAlias(Alias)
 }
 
 struct EntityRegistryInternal {
-    entities: HashSet<EntityId>,
+    id_to_alias: HashMap<EntityId, Alias>,
+    alias_to_id: HashMap<Alias, EntityId>, 
     positions: LocationMap,
     names: HashMap<EntityId, Name>,
     players: HashMap<EntityId, Player>,
@@ -86,7 +109,8 @@ pub struct EntityRegistry {
 impl EntityRegistry {
     pub fn new() -> EntityRegistry {
         let internal = EntityRegistryInternal {
-            entities: HashSet::new(),
+            id_to_alias: HashMap::new(),
+            alias_to_id: HashMap::new(),
             positions: LocationMap::new(),
             names: HashMap::new(),
             players: HashMap::new(),
@@ -97,12 +121,12 @@ impl EntityRegistry {
         }
     }
 
-    pub fn spawn(&self, entity_id: Option<EntityId>) -> Result<EntityId, EntityRegistryError> {
+    pub fn spawn(&self, entity_id: Option<EntityId>, alias: Alias) -> Result<EntityId, EntityRegistryError> {
         let mut internal = self.internal.write();
 
         let id = match entity_id {
             Some(id) => {
-                if internal.entities.contains(&id) {
+                if internal.id_to_alias.contains_key(&id) {
                     return Err(EntityRegistryError::DuplicateSpawn(id))
                 }
                 id
@@ -112,7 +136,13 @@ impl EntityRegistry {
             }
         };
 
-        internal.entities.insert(id.clone());
+        internal.id_to_alias.insert(id.clone(), alias.clone());
+
+        if internal.alias_to_id.contains_key(&alias) {
+            return Err(EntityRegistryError::DuplicateAlias(alias))
+        }
+
+        internal.alias_to_id.insert(alias, id.clone());
         Ok(id)
     }
 
@@ -124,8 +154,11 @@ impl EntityRegistry {
         Location::remove(&mut internal, id);
         Name::remove(&mut internal, id);
         Player::remove(&mut internal, id);
+        Item::remove(&mut internal, id);
 
-        internal.entities.remove(id);
+        let alias = internal.id_to_alias.get(id).unwrap().clone();
+        internal.alias_to_id.remove(&alias);
+        internal.id_to_alias.remove(id);
 
         Ok(())
     }
@@ -217,9 +250,15 @@ impl EntityRegistry {
         f(&mut iter)
     }
 
+    pub fn resolve_alias(&self, alias: &Alias) -> Option<EntityId> {
+        let internal = self.internal.read();
+
+        internal.alias_to_id.get(alias).cloned()
+    }
+
     /// Helper function to validate if an entity ID is valid.
     fn validate_entity(internal: &EntityRegistryInternal, entity: &EntityId) -> Result<(), EntityRegistryError> {
-        if internal.entities.contains(entity) {
+        if internal.id_to_alias.contains_key(entity) {
             Ok(())
         } else {
             Err(EntityRegistryError::UnknownEntity(entity.clone()))
@@ -379,8 +418,8 @@ mod tests {
     fn test_update_component() {
         let entities = EntityRegistry::new();
 
-        let e1 = entities.spawn(None).unwrap();
-        let e2 = entities.spawn(None).unwrap();
+        let e1 = entities.spawn(None, "e1".into()).unwrap();
+        let e2 = entities.spawn(None, "e2".into()).unwrap();
 
         entities.update_component(&e1, Name { value: "entity 1".to_string() }).unwrap();
 
@@ -396,9 +435,9 @@ mod tests {
     fn test_get_component_by_location() {
         let entities = EntityRegistry::new();
 
-        let e1 = entities.spawn(None).unwrap();
-        let e2 = entities.spawn(None).unwrap();
-        let e3 = entities.spawn(None).unwrap();
+        let e1 = entities.spawn(None, "e1".into()).unwrap();
+        let e2 = entities.spawn(None, "e2".into()).unwrap();
+        let e3 = entities.spawn(None, "e3".into()).unwrap();
 
         let room1 = RoomId::generate();
         let room2 = RoomId::generate();

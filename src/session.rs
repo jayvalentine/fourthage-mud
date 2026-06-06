@@ -60,7 +60,8 @@ impl From<EntityRegistryError> for SessionError {
     fn from(value: EntityRegistryError) -> Self {
         match value {
             EntityRegistryError::UnknownEntity(entity) => SessionError::Internal(format!("Attempted to update property of unknown entity '{entity:?}'")),
-            EntityRegistryError::DuplicateSpawn(_) => SessionError::Login
+            EntityRegistryError::DuplicateSpawn(_) => SessionError::Login,
+            EntityRegistryError::DuplicateAlias(alias) => SessionError::Internal(format!("Attempted to spawn entity with duplicate alias '{alias:?}'"))
         }
     }
 }
@@ -79,7 +80,7 @@ impl SessionContext {
     pub fn new(id: EntityId, username: String, is_admin: bool, position: Location, world: Arc<World>, pool: PgPool, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<SessionContext, SessionError> {
         tracing::debug!("Session started for player {username} (id: {id:?})");
 
-        let id = entities.spawn(Some(id))?;
+        let id = entities.spawn(Some(id), format!("player_{username}").into())?;
         entities.update_component(&id, Player)?;
         entities.update_component(&id, position)?;
         entities.update_component(&id, Name { value: username })?;

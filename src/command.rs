@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::entities::{EntityRegistryError, Item, Location, Name, Player};
+use crate::entities::{Alias, EntityRegistryError, Item, Location, Name, Player};
 use crate::event::{Event, EventTarget, GameEvent};
 use crate::model::world::{DirectionParseError, Room};
 use crate::model::{world::Direction, ids::{EntityId, RoomId}};
@@ -14,7 +14,7 @@ pub enum Command {
     Look,
 
     // Admin commands
-    Edit(EditField, String),
+    Edit(EditTarget, EditField, String),
     Save(SaveTarget, String),
     Link(Direction, String),
     Unlink(Direction),
@@ -28,6 +28,11 @@ pub enum Command {
 
 pub enum SpawnTarget {
     Item
+}
+
+pub enum EditTarget {
+    Room,
+    Entity(String)
 }
 
 pub enum EditField {
@@ -149,9 +154,15 @@ impl Command {
             "look" => Ok(Command::Look),
 
             "edit" => {
+                let target = match parts.next() {
+                    Some("room") => EditTarget::Room,
+                    Some(s) => EditTarget::Entity(s.into()),
+                    None => return Err(CommandParseError::InvalidSyntax("Edit what?".into()))
+                };
+
                 let field = match parts.next() {
                     Some(s) => s,
-                    None => return Err(CommandParseError::InvalidSyntax("Edit what?".into()))
+                    None => return Err(CommandParseError::InvalidSyntax("Edit which field?".into()))
                 };
                 let field = match field {
                     "desc" | "description" => EditField::Description,
@@ -162,7 +173,7 @@ impl Command {
                 if content.is_empty() {
                     return Err(CommandParseError::InvalidSyntax("No edit content!".into()))
                 }
-                Ok(Command::Edit(field, content))
+                Ok(Command::Edit(target, field, content))
             },
             "save" => {
                 let target = match parts.next() {
@@ -333,24 +344,44 @@ fn handle_look(context: &SessionContext) -> Result<CommandResult, CommandExecuti
     Ok(CommandResult::Query(QueryResult { response }))
 }
 
-fn handle_edit(context: &SessionContext, field: EditField, content: String) -> Result<CommandResult, CommandExecutionError> {
+fn handle_edit(context: &SessionContext, target: EditTarget, field: EditField, content: String) -> Result<CommandResult, CommandExecutionError> {
     if !context.is_admin {
         return Ok(CommandResult::Unauthorized)
     }
 
-    let current_room_id = get_current_position(context)?;
-    let response = if let Some(room) = context.world.get_room(&current_room_id) {
-        let mut updated = Room::clone(&room);
-        match field {
-            EditField::Description => { updated.set_description(content); },
-            EditField::Name => { updated.set_name(content); }
+    match target {
+        EditTarget::Room => {
+            let current_room_id = get_current_position(context)?;
+            let response = if let Some(room) = context.world.get_room(&current_room_id) {
+                let mut updated = Room::clone(&room);
+                match field {
+                    EditField::Description => { updated.set_description(content); },
+                    EditField::Name => { updated.set_name(content); }
+                }
+                context.world.update_room(current_room_id, updated);
+                CommandResult::Query(QueryResult { response: "Updated room.".into() })
+            } else {
+                CommandResult::Query(QueryResult { response: format!("Cannot update room '{0:?}'", current_room_id) })
+            };
+            Ok(response)
+        },
+        EditTarget::Entity(alias) => {
+            let alias = Alias::from(alias);
+            let entity_id = match context.entities.resolve_alias(&alias) {
+                Some(e) => e,
+                None => return Ok(CommandResult::Query(format!("Could not resolve alias '{alias}'").into()))
+            };
+
+            match field {
+                EditField::Description => Ok(CommandResult::Query("Cannot edit entity description yet.".into())),
+                EditField::Name => {
+                    let name = Name { value: content };
+                    context.entities.update_component(&entity_id, name)?;
+                    Ok(CommandResult::Query(format!("Updated name of '{alias}'").into()))
+                }
+            }
         }
-        context.world.update_room(current_room_id, updated);
-        CommandResult::Query(QueryResult { response: "Updated room.".into() })
-    } else {
-        CommandResult::Query(QueryResult { response: format!("Cannot update room '{0:?}'", current_room_id) })
-    };
-    Ok(response)
+    }
 }
 
 fn handle_save(context: &SessionContext, target: SaveTarget, path: String) -> Result<CommandResult, CommandExecutionError> {
@@ -493,7 +524,7 @@ fn handle_spawn(context: &SessionContext, target: SpawnTarget, alias: String) ->
     
     let current_room_id = get_current_position(context)?;
 
-    let entity_id = context.entities.spawn(None)?;
+    let entity_id = context.entities.spawn(None, alias.clone().into())?;
 
     let location = Location { value: current_room_id.as_entity() };
     context.entities.update_component(&entity_id, location)?;
@@ -546,7 +577,7 @@ pub async fn handle_command(context: &mut SessionContext, command: Command) -> R
         Command::Who => handle_who(context),
         Command::Look => handle_look(context),
 
-        Command::Edit(field, content) => handle_edit(context, field, content),
+        Command::Edit(target, field, content) => handle_edit(context, target, field, content),
         Command::Save(target, path) => handle_save(context, target, path),
         Command::Link(direction, target) => handle_link(context, direction, target),
         Command::Unlink(direction) => handle_unlink(context, direction),
