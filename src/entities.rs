@@ -320,6 +320,12 @@ pub struct Location {
     pub value: EntityId
 }
 
+impl Location {
+    pub fn new(id: EntityId) -> Location {
+        Location { value: id }
+    }
+}
+
 impl ComponentStorage for Location {
     fn get<'a>(entities: &'a EntityRegistryInternal, entity: &EntityId) -> Option<&'a Self>
     where Self: Sized
@@ -412,6 +418,7 @@ impl ComponentStorage for Player {
 }
 
 /// Marker component for items.
+#[derive(Clone)]
 pub struct Item;
 
 impl ComponentStorage for Item {
