@@ -6,3 +6,7 @@
   alias: item:crystal_ball
   name: Crystal Ball
   spawn_location: inside_seer_hut
+019ea28d-85cf-7240-8ba2-7638573d0613:
+  alias: item:book:of_orilest
+  name: 'Book: Of Orilest'
+  spawn_location: bookshop
