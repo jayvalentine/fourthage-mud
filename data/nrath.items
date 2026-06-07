@@ -1,3 +1,7 @@
+019ea272-5c42-7fa2-9c82-7fa27e1094fb:
+  alias: item:book:herb_guide
+  name: 'Book: A Guide to Herbs'
+  spawn_location: bookshop
 019ea163-ba03-70d1-8814-8fd36e687bbb:
   alias: item:crystal_ball
   name: Crystal Ball
