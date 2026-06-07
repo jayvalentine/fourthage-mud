@@ -250,6 +250,48 @@ impl EntityRegistry {
         f(&mut iter)
     }
 
+    #[allow(private_bounds)]
+    pub fn query3<T1, T2, T3, R, F>(&self, f: F) -> Result<R, EntityRegistryError>
+    where
+        T1: ComponentStorage,
+        T2: ComponentStorage,
+        T3: ComponentStorage,
+        F: FnOnce(&mut dyn Iterator<Item = (&EntityId, (&T1, &T2, &T3))>) -> Result<R, EntityRegistryError>
+    {
+        let internal = self.internal.read();
+
+        let storage1 = T1::storage(&internal);
+        let storage2 = T2::storage(&internal);
+        let storage3 = T3::storage(&internal);
+
+        let min_len = storage1.len().min(storage2.len()).min(storage3.len());
+
+        let mut iter: Box<dyn Iterator<Item = (&EntityId, (&T1, &T2, &T3))>> = if min_len == storage1.len() {
+            let iter = storage1.iter()
+                .filter(|(id, _)| storage2.contains_key(id) && storage3.contains_key(id))
+                .filter_map(|(id, c1)| {
+                    Some((id, (c1, storage2.get(id)?, storage3.get(id)?)))
+                });
+            Box::new(iter)
+        } else if min_len == storage2.len() {
+            let iter = storage2.iter()
+                .filter(|(id, _)| storage1.contains_key(id) && storage3.contains_key(id))
+                .filter_map(|(id, c2)| {
+                    Some((id, (storage1.get(id)?, c2, storage3.get(id)?)))
+                });
+            Box::new(iter)
+        } else {
+            let iter = storage3.iter()
+                .filter(|(id, _)| storage1.contains_key(id) && storage2.contains_key(id))
+                .filter_map(|(id, c3)| {
+                    Some((id, (storage1.get(id)?, storage2.get(id)?, c3)))
+                });
+            Box::new(iter)
+        };
+
+        f(&mut iter)
+    }
+
     pub fn resolve_alias(&self, alias: &Alias) -> Option<EntityId> {
         let internal = self.internal.read();
 
@@ -459,6 +501,41 @@ mod tests {
 
             assert!(iter.next().is_none());
             Ok(())
-        });
+        }).unwrap();
+    }
+
+    #[test]
+    fn test_query3() {
+        let entities = EntityRegistry::new();
+
+        let e1 = entities.spawn(None, "e1".into()).unwrap();
+        let e2 = entities.spawn(None, "e2".into()).unwrap();
+        let e3 = entities.spawn(None, "e3".into()).unwrap();
+
+        let loc = Location { value: RoomId::generate().as_entity() };
+        let name = Name { value: "Some Name".into() };
+
+        // e1 has location and name but not item.
+        entities.update_component(&e1, loc.clone()).unwrap();
+        entities.update_component(&e1, name.clone()).unwrap();
+
+        // e2 has name and item but not location.
+        entities.update_component(&e2, name.clone()).unwrap();
+        entities.update_component(&e2, Item).unwrap();
+
+        // e3 has all three components.
+        entities.update_component(&e3, loc.clone()).unwrap();
+        entities.update_component(&e3, name.clone()).unwrap();
+        entities.update_component(&e3, Item).unwrap();
+
+        entities.query3::<Name, Item, Location, _, _>(|iter| {
+            let (e, _) = iter.next().unwrap();
+
+            // Only one entity is expected since only one has all three components.
+            assert_eq!(&e3, e);
+
+            assert!(iter.next().is_none());
+            Ok(())
+        }).unwrap();
     }
 }
