@@ -4,6 +4,7 @@ use serde::{Serialize, de::Error};
 use serde::Deserialize;
 use uuid::Uuid;
 
+use crate::model::ids::{Alias, EntityId};
 use crate::model::{ids::RoomId, world::Room};
 
 #[derive(Debug)]
@@ -70,6 +71,27 @@ impl Serialize for RoomId {
     }
 }
 
+impl<'de> Deserialize<'de> for EntityId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>
+    {
+        let s = String::deserialize(deserializer)?;
+        let id = Uuid::parse_str(&s).map_err(|_| D::Error::custom(format!("Invalid EntityId: {s}")))?;
+        Ok(EntityId::from_uuid(id))
+    }
+}
+
+impl Serialize for EntityId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer
+    {
+        let s = self.as_uuid().to_string();
+        String::serialize(&s, serializer)
+    }
+}
+
 pub fn get_rooms(file: &str) -> Result<HashMap<RoomId, Room>, DataLoadError> {
     let yaml = std::fs::read_to_string(file)?;
     let yaml: HashMap<RoomId, Room> = serde_yaml::from_str(&yaml)?;
@@ -79,6 +101,24 @@ pub fn get_rooms(file: &str) -> Result<HashMap<RoomId, Room>, DataLoadError> {
 
 pub fn save_rooms(file: &str, rooms: &HashMap<RoomId, Arc<Room>>) -> Result<(), DataWriteError> {
     let yaml = serde_yaml::to_string(rooms)?;
+    std::fs::write(file, yaml)?;
+    Ok(())
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ItemData {
+    pub alias: Alias,
+    pub name: String,
+    pub spawn_location: Alias
+}
+
+pub fn load_items(file: &str) -> Result<HashMap<EntityId, ItemData>, DataLoadError> {
+    let yaml = std::fs::read_to_string(file)?;
+    Ok(serde_yaml::from_str(&yaml)?)
+}
+
+pub fn save_items(file: &str, items: &HashMap<EntityId, ItemData>) -> Result<(), DataWriteError> {
+    let yaml = serde_yaml::to_string(items)?;
     std::fs::write(file, yaml)?;
     Ok(())
 }

@@ -12,11 +12,13 @@ mod password;
 mod event;
 mod entities;
 mod persistence;
+mod seed;
 
 use model::world::World;
 use event::EventBus;
 
 use crate::entities::EntityRegistry;
+use crate::seed::{ItemSeeder, Seeder};
 
 #[derive(Debug)]
 enum AppError {
@@ -57,6 +59,11 @@ async fn main() -> Result<(), AppError> {
     let world = Arc::new(World::new(rooms));
     let event_bus = Arc::new(EventBus::new());
     let entities = Arc::new(EntityRegistry::new());
+
+    ItemSeeder::seed(&format!("{data_path}/nrath.items"), &pool, &world, &entities).await.map_err(|e| {
+        tracing::error!("Failed to seed items: {e:?}");
+        AppError::InitialisationError
+    })?;
 
     let listener = TcpListener::bind("0.0.0.0:8080").await.map_err(|e| {
         tracing::error!("Error starting TCP listener: {e}");

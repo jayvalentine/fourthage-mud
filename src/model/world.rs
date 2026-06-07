@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use serde::de::Error;
 use uuid::uuid;
 
+use crate::model::ids::Alias;
+
 use super::ids::RoomId;
 
 pub enum DirectionParseError {
@@ -74,14 +76,14 @@ impl Serialize for Direction {
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Room {
-    alias: String,
+    alias: Alias,
     name: String,
     description: String,
     exits: HashMap<Direction, RoomId>
 }
 
 impl Room {
-    pub fn new(alias: String, name: String, description: String, exits: HashMap<Direction, RoomId>) -> Room {
+    pub fn new(alias: Alias, name: String, description: String, exits: HashMap<Direction, RoomId>) -> Room {
         Room {
             alias,
             name,
@@ -102,7 +104,7 @@ impl Room {
         &self.description
     }
 
-    pub fn alias(&self) -> &str {
+    pub fn alias(&self) -> &Alias {
         &self.alias
     }
 
@@ -133,7 +135,7 @@ impl Room {
 
 struct WorldInner {
     rooms: HashMap<RoomId, Arc<Room>>,
-    aliases: HashMap<String, RoomId>
+    aliases: HashMap<Alias, RoomId>
 }
 
 pub struct World {
@@ -172,7 +174,7 @@ impl World {
         write.aliases.insert(new_alias, id.clone());
     }
 
-    pub fn resolve_alias(&self, alias: &str) -> Option<RoomId> {
+    pub fn resolve_alias(&self, alias: &Alias) -> Option<RoomId> {
         let read = self.inner.read();
         read.aliases.get(alias).cloned()
     }
