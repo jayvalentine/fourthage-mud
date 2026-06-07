@@ -1,6 +1,6 @@
 use sqlx::PgPool;
 
-use crate::{data::{self, DataLoadError}, db::DatabaseError, entities::{EntityRegistry, EntityRegistryError, Item, Location, Name}, model::{ids::Alias, world::World}, persistence};
+use crate::{data::{self, DataLoadError}, db::DatabaseError, entities::{EntityRegistry, EntityRegistryError, Item, Location, Name, SpawnLocation}, model::{ids::Alias, world::World}, persistence};
 
 #[derive(Debug)]
 pub enum SeedError {
@@ -54,6 +54,7 @@ impl Seeder for ItemSeeder {
             entities.update_component(&id, Item)?;
             entities.update_component(&id, Name { value: item.name.clone() })?;
             entities.update_component(&id, location)?;
+            entities.update_component(&id, SpawnLocation { value: room_id.as_entity() })?;
         }
 
         tracing::debug!("Seeded {} items.", items.len());

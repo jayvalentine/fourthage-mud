@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::data::ItemData;
+use crate::db::DatabaseError;
 use crate::entities::{EntityRegistryError, Item, Location, Name, Player, SpawnLocation};
 use crate::event::{Event, EventTarget, GameEvent};
 use crate::model::world::{DirectionParseError, Room};
@@ -110,9 +111,13 @@ pub enum CommandExecutionError {
 
 impl From<EntityRegistryError> for CommandExecutionError {
     fn from(value: EntityRegistryError) -> Self {
-        match value {
-            _ => CommandExecutionError::Unrecoverable("Entity registry error".into())
-        }
+        CommandExecutionError::Unrecoverable(format!("Entity registry error: {value:?}"))
+    }
+}
+
+impl From<DatabaseError> for CommandExecutionError {
+    fn from(value: DatabaseError) -> Self {
+        CommandExecutionError::Unrecoverable(format!("Database error: {value:?}"))
     }
 }
 
@@ -138,9 +143,9 @@ impl Command {
                     Some(s) => s,
                     None => return Err(CommandParseError::InvalidSyntax("Go where?".into()))
                 };
-                let direction = match Self::parse_direction(direction) {
-                    Some(d) => d,
-                    None => return Err(CommandParseError::InvalidSyntax(format!("You can't go {direction}!")))
+                let direction = match Direction::from_string(direction) {
+                    Ok(d) => d,
+                    Err(_) => return Err(CommandParseError::InvalidSyntax(format!("You can't go {direction}!")))
                 };
                 Ok(Command::Go(direction))
             },
@@ -413,6 +418,7 @@ fn handle_save(context: &SessionContext, target: SaveTarget, path: String) -> Re
             })?;
             let mut item_data = HashMap::new();
             for (e, (name, spawn)) in items {
+                tracing::debug!("item: {0} ({1})", &e, &name);
                 let alias = context.entities.get_alias(&e)?;
                 let room = match context.world.get_room(&RoomId::from_entity(spawn)) {
                     Some(r) => r,
@@ -547,7 +553,7 @@ fn handle_create(context: &SessionContext, direction: Direction, target: Alias) 
     Ok(CommandResult::Query(QueryResult { response }))
 }
 
-fn handle_spawn(context: &SessionContext, target: SpawnTarget, alias: Alias) -> Result<CommandResult, CommandExecutionError> {
+async fn handle_spawn(context: &SessionContext, target: SpawnTarget, alias: Alias) -> Result<CommandResult, CommandExecutionError> {
     if !context.is_admin {
         return Ok(CommandResult::Unauthorized)
     }
@@ -557,10 +563,11 @@ fn handle_spawn(context: &SessionContext, target: SpawnTarget, alias: Alias) -> 
     let entity_id = match context.entities.spawn(None, alias.clone()) {
         Ok(id) => id,
         Err(EntityRegistryError::DuplicateAlias(a)) => return Ok(CommandResult::Query(format!("An entity already exists with alias '{a}'").into())),
-        _ => return Ok(CommandResult::Query(format!("An unknown error occurred spawning the item.").into()))
+        Err(e) => return Err(CommandExecutionError::from(e))
     };
 
     let location = Location { value: current_room_id.as_entity() };
+    persistence::seed_location(&entity_id, &location, &context.pool).await?;
     context.entities.update_component(&entity_id, SpawnLocation::from(&location))?;
     context.entities.update_component(&entity_id, location)?;
 
@@ -617,7 +624,7 @@ pub async fn handle_command(context: &mut SessionContext, command: Command) -> R
         Command::Link(direction, target) => handle_link(context, direction, target),
         Command::Unlink(direction) => handle_unlink(context, direction),
         Command::Create(direction, target) => handle_create(context, direction, target),
-        Command::Spawn(target, alias) => handle_spawn(context, target, alias),
+        Command::Spawn(target, alias) => handle_spawn(context, target, alias).await,
         Command::RoomInfo => handle_roominfo(context),
 
         Command::Quit => {
