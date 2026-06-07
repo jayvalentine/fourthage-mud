@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use crate::entities::{Alias, EntityRegistryError, Item, Location, Name, Player};
+use crate::data::ItemData;
+use crate::entities::{Alias, EntityRegistryError, Item, Location, Name, Player, SpawnLocation};
 use crate::event::{Event, EventTarget, GameEvent};
 use crate::model::world::{DirectionParseError, Room};
 use crate::model::{world::Direction, ids::{EntityId, RoomId}};
@@ -41,7 +42,8 @@ pub enum EditField {
 }
 
 pub enum SaveTarget {
-    World
+    Rooms,
+    Items
 }
 
 pub enum CommandParseError {
@@ -181,7 +183,8 @@ impl Command {
                     None => return Err(CommandParseError::InvalidSyntax("Save what?".into()))
                 };
                 let target = match target {
-                    "world" => SaveTarget::World,
+                    "rooms" => SaveTarget::Rooms,
+                    "items" => SaveTarget::Items,
                     s => return Err(CommandParseError::UnknownCommand(format!("Don't know how to save '{s}'!")))
                 };
                 let path = match parts.next() {
@@ -394,11 +397,30 @@ fn handle_save(context: &SessionContext, target: SaveTarget, path: String) -> Re
     }
 
     let response = match target {
-        SaveTarget::World => {
+        SaveTarget::Rooms => {
             let rooms = context.world.rooms();
             match data::save_rooms(&format!("data/{path}"), &rooms) {
-                Ok(_) => format!("World saved to '{path}'"),
-                Err(e) => format!("Could not save world to '{path}': {e:?}")
+                Ok(_) => format!("Rooms saved to 'data/{path}'"),
+                Err(e) => format!("Could not save rooms to 'data/{path}': {e:?}")
+            }
+        },
+        SaveTarget::Items => {
+            let items: HashMap<EntityId, (String, EntityId)> = context.entities.query3::<Item, Name, SpawnLocation, _, _>(|iter| {
+                Ok(iter.map(|(e, (_, name, spawn))| (e.clone(), (name.value.clone(), spawn.value))).collect())
+            })?;
+            let mut item_data = HashMap::new();
+            for (e, (name, spawn)) in items {
+                let alias = context.entities.get_alias(&e)?;
+                item_data.insert(e, ItemData {
+                    alias: alias.to_string(),
+                    name: name,
+                    spawn_location: spawn
+                });
+            }
+
+            match data::save_items(&format!("data/{path}"), &item_data) {
+                Ok(_) => format!("Items saved to 'data/{path}'"),
+                Err(e) => format!("Could not save items to 'data/{path}': {e:?}")
             }
         }
     };
@@ -531,6 +553,7 @@ fn handle_spawn(context: &SessionContext, target: SpawnTarget, alias: String) ->
     };
 
     let location = Location { value: current_room_id.as_entity() };
+    context.entities.update_component(&entity_id, SpawnLocation::from(&location))?;
     context.entities.update_component(&entity_id, location)?;
 
     let name = Name { value: "Unnamed item".into() };

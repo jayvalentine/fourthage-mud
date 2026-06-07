@@ -61,7 +61,8 @@ impl From<EntityRegistryError> for SessionError {
         match value {
             EntityRegistryError::UnknownEntity(entity) => SessionError::Internal(format!("Attempted to update property of unknown entity '{entity:?}'")),
             EntityRegistryError::DuplicateSpawn(_) => SessionError::Login,
-            EntityRegistryError::DuplicateAlias(alias) => SessionError::Internal(format!("Attempted to spawn entity with duplicate alias '{alias:?}'"))
+            EntityRegistryError::DuplicateAlias(alias) => SessionError::Internal(format!("Attempted to spawn entity with duplicate alias '{alias:?}'")),
+            EntityRegistryError::InconsistentInternalState => SessionError::Internal("Entity registry is in an inconsistent state.".into())
         }
     }
 }

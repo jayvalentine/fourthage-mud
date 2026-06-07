@@ -1,6 +1,6 @@
 use sqlx::{PgPool};
 
-use crate::model::ids::{EntityId, RoomId};
+use crate::model::ids::EntityId;
 
 #[derive(Debug)]
 pub enum DatabaseError {

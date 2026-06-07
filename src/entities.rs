@@ -76,13 +76,15 @@ impl LocationMap {
 pub enum EntityRegistryError {
     UnknownEntity(EntityId),
     DuplicateSpawn(EntityId),
-    DuplicateAlias(Alias)
+    DuplicateAlias(Alias),
+    InconsistentInternalState
 }
 
 struct EntityRegistryInternal {
     id_to_alias: HashMap<EntityId, Alias>,
     alias_to_id: HashMap<Alias, EntityId>, 
-    positions: LocationMap,
+    locations: LocationMap,
+    spawn_locations: HashMap<EntityId, SpawnLocation>,
     names: HashMap<EntityId, Name>,
     players: HashMap<EntityId, Player>,
     items: HashMap<EntityId, Item>,
@@ -111,7 +113,8 @@ impl EntityRegistry {
         let internal = EntityRegistryInternal {
             id_to_alias: HashMap::new(),
             alias_to_id: HashMap::new(),
-            positions: LocationMap::new(),
+            locations: LocationMap::new(),
+            spawn_locations: HashMap::new(),
             names: HashMap::new(),
             players: HashMap::new(),
             items: HashMap::new()
@@ -161,6 +164,14 @@ impl EntityRegistry {
         internal.id_to_alias.remove(id);
 
         Ok(())
+    }
+
+    #[allow(private_bounds)]
+    pub fn get_alias(&self, e: &EntityId) -> Result<Alias, EntityRegistryError> {
+        let internal = self.internal.read();
+        Self::validate_entity(&internal, e)?;
+        let alias = internal.id_to_alias.get(e).ok_or(EntityRegistryError::InconsistentInternalState)?;
+        Ok(alias.clone())
     }
 
     #[allow(private_bounds)]
@@ -214,7 +225,7 @@ impl EntityRegistry {
     {
         let internal = self.internal.read();
 
-        let entities_in_location = internal.positions.id_by_location.get(location);
+        let entities_in_location = internal.locations.id_by_location.get(location);
 
         let storage = T::storage(&internal);
         let mut iter = entities_in_location.iter()
@@ -315,7 +326,7 @@ impl EventTargetResolver<EntityRegistryError> for EntityRegistry {
             EventTarget::LocationExcept(location, entity_id) => {
                 let internal = self.internal.read();
 
-                let targets = match internal.positions.get_at_position(&location) {
+                let targets = match internal.locations.get_at_position(&location) {
                     Some(entities) => entities.iter().map(|e| e.clone()).filter(|e| e != entity_id).collect(),
                     None => Vec::new()
                 };
@@ -334,25 +345,25 @@ impl ComponentStorage for Location {
     fn get<'a>(entities: &'a EntityRegistryInternal, entity: &EntityId) -> Option<&'a Self>
     where Self: Sized
     {
-        entities.positions.location_by_id.get(entity)
+        entities.locations.location_by_id.get(entity)
     }
 
     fn update(entities: &mut EntityRegistryInternal, entity: &EntityId, component: Self)
     where Self: Sized
     {
-        entities.positions.update_position(entity, component);
+        entities.locations.update_position(entity, component);
     }
 
     fn remove(entities: &mut EntityRegistryInternal, entity: &EntityId)
     where Self: Sized
     {
-        entities.positions.remove_position(entity);
+        entities.locations.remove_position(entity);
     }
 
     fn storage(entities: &EntityRegistryInternal) -> &HashMap<EntityId, Self>
     where Self: Sized
     {
-        &entities.positions.location_by_id
+        &entities.locations.location_by_id
     }
 }
 
@@ -447,6 +458,48 @@ impl ComponentStorage for Item {
     where Self: Sized
     {
         &entities.items
+    }
+}
+
+pub struct SpawnLocation {
+    pub value: EntityId
+}
+
+impl ComponentStorage for SpawnLocation {
+    fn get<'a>(entities: &'a EntityRegistryInternal, entity: &EntityId) -> Option<&'a Self>
+    where Self: Sized
+    {
+        entities.spawn_locations.get(entity)
+    }
+
+    fn remove(entities: &mut EntityRegistryInternal, entity: &EntityId)
+    where Self: Sized
+    {
+        entities.spawn_locations.remove(entity);
+    }
+
+    fn update(entities: &mut EntityRegistryInternal, entity: &EntityId, component: Self)
+    where Self: Sized
+    {
+        entities.spawn_locations.insert(entity.clone(), component);
+    }
+
+    fn storage(entities: &EntityRegistryInternal) -> &HashMap<EntityId, Self>
+    where Self: Sized
+    {
+        &entities.spawn_locations
+    }
+}
+
+impl From<Location> for SpawnLocation {
+    fn from(value: Location) -> Self {
+        Self { value: value.value }
+    }
+}
+
+impl From<&Location> for SpawnLocation {
+    fn from(value: &Location) -> Self {
+        Self { value: value.value }
     }
 }
 
