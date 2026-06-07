@@ -4,7 +4,7 @@ use serde::{Serialize, de::Error};
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::model::ids::EntityId;
+use crate::model::ids::{Alias, EntityId};
 use crate::model::{ids::RoomId, world::Room};
 
 #[derive(Debug)]
@@ -107,9 +107,14 @@ pub fn save_rooms(file: &str, rooms: &HashMap<RoomId, Arc<Room>>) -> Result<(), 
 
 #[derive(Serialize, Deserialize)]
 pub struct ItemData {
-    pub alias: String,
+    pub alias: Alias,
     pub name: String,
-    pub spawn_location: EntityId
+    pub spawn_location: Alias
+}
+
+pub fn load_items(file: &str) -> Result<HashMap<EntityId, ItemData>, DataLoadError> {
+    let yaml = std::fs::read_to_string(file)?;
+    Ok(serde_yaml::from_str(&yaml)?)
 }
 
 pub fn save_items(file: &str, items: &HashMap<EntityId, ItemData>) -> Result<(), DataWriteError> {

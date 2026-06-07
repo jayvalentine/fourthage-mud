@@ -81,7 +81,7 @@ impl SessionContext {
     pub fn new(id: EntityId, username: String, is_admin: bool, position: Location, world: Arc<World>, pool: PgPool, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<SessionContext, SessionError> {
         tracing::debug!("Session started for player {username} (id: {id:?})");
 
-        let id = entities.spawn(Some(id), format!("player_{username}").into())?;
+        let id = entities.spawn(Some(id), format!("player:{username}").into())?;
         entities.update_component(&id, Player)?;
         entities.update_component(&id, position)?;
         entities.update_component(&id, Name { value: username })?;
@@ -219,11 +219,11 @@ async fn run_internal(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedR
         }
     };
 
-    let position = match persistence::load_position(&account.id, &pool).await? {
-        Some(pos) => pos,
+    let location = match persistence::load_location(&account.id, &pool).await? {
+        Some(l) => l,
         None => Location { value: World::default_room_id().as_entity() }
     };
-    let mut session_context = SessionContext::new(account.id, account.username, account.is_admin, position, world, pool, event_bus, entities)?;
+    let mut session_context = SessionContext::new(account.id, account.username, account.is_admin, location, world, pool, event_bus, entities)?;
     welcome(writer, &session_context).await?;
 
     loop {

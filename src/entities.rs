@@ -1,29 +1,8 @@
 use core::fmt;
-use std::{collections::{HashMap, HashSet}, fmt::Display};
+use std::{collections::{HashMap, HashSet}};
 use parking_lot::RwLock;
 
-use crate::{event::{EventTarget, EventTargetResolver}, model::ids::EntityId};
-
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub struct Alias(String);
-
-impl From<String> for Alias {
-    fn from(value: String) -> Self {
-        Self(value)
-    }
-}
-
-impl From<&str> for Alias {
-    fn from(value: &str) -> Self {
-        Alias(value.to_string())
-    }
-}
-
-impl Display for Alias {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
+use crate::{event::{EventTarget, EventTargetResolver}, model::ids::{Alias, EntityId}};
 
 struct LocationMap {
     location_by_id: HashMap<EntityId, Location>,

@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO positions (entity_id, room_id) VALUES ($1, $2)\n         ON CONFLICT(entity_id) DO UPDATE SET room_id = positions.room_id\n         RETURNING room_id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "room_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "ec94b3336fd3a0a929e94daa5be2dcb168ab7063e7e1ad6053395a987ea5c6d3"
+}

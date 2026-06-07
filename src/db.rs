@@ -57,6 +57,17 @@ pub async fn update_location(pool: &PgPool, id: &EntityId, location_id: &EntityI
     Ok(())
 }
 
+pub async fn insert_location_if_absent(pool: &PgPool, id: &EntityId, location_id: &EntityId) -> Result<EntityId, DatabaseError> {
+    let row = sqlx::query!(
+        "INSERT INTO positions (entity_id, room_id) VALUES ($1, $2)
+         ON CONFLICT(entity_id) DO UPDATE SET room_id = positions.room_id
+         RETURNING room_id",
+        id.as_uuid(),
+        location_id.as_uuid()
+    ).fetch_one(pool).await?;
+    Ok(EntityId::from_uuid(row.room_id))
+}
+
 pub async fn get_location(pool: &PgPool, id: &EntityId) -> Result<Option<EntityId>, DatabaseError> {
     let room = sqlx::query!(
         "SELECT room_id FROM positions WHERE entity_id = $1",

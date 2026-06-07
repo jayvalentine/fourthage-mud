@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
 use crate::data::ItemData;
-use crate::entities::{Alias, EntityRegistryError, Item, Location, Name, Player, SpawnLocation};
+use crate::entities::{EntityRegistryError, Item, Location, Name, Player, SpawnLocation};
 use crate::event::{Event, EventTarget, GameEvent};
 use crate::model::world::{DirectionParseError, Room};
-use crate::model::{world::Direction, ids::{EntityId, RoomId}};
+use crate::model::{world::Direction, ids::{EntityId, RoomId, Alias}};
 use crate::session::SessionContext;
 use crate::{data, persistence};
 
@@ -17,10 +17,10 @@ pub enum Command {
     // Admin commands
     Edit(EditTarget, EditField, String),
     Save(SaveTarget, String),
-    Link(Direction, String),
+    Link(Direction, Alias),
     Unlink(Direction),
-    Create(Direction, String),
-    Spawn(SpawnTarget, String),
+    Create(Direction, Alias),
+    Spawn(SpawnTarget, Alias),
     RoomInfo,
 
     // Session management commands
@@ -33,7 +33,7 @@ pub enum SpawnTarget {
 
 pub enum EditTarget {
     Room,
-    Entity(String)
+    Entity(Alias)
 }
 
 pub enum EditField {
@@ -202,7 +202,7 @@ impl Command {
                     Some(s) => s,
                     None => return Err(CommandParseError::InvalidSyntax("Link to where?".into()))
                 };
-                Ok(Command::Link(direction, alias.to_string()))
+                Ok(Command::Link(direction, Alias::from(alias)))
             },
             "unlink" => {
                 let direction = match parts.next() {
@@ -220,7 +220,7 @@ impl Command {
                     Some(s) => s,
                     None => return Err(CommandParseError::InvalidSyntax("Create what?".into()))
                 };
-                Ok(Command::Create(direction, alias.to_string()))
+                Ok(Command::Create(direction, Alias::from(alias)))
             },
             "spawn" => {
                 let what = match parts.next() {
@@ -232,7 +232,7 @@ impl Command {
                     Some(s) => s,
                     None => return Err(CommandParseError::InvalidSyntax("With what alias?".into()))
                 };
-                Ok(Command::Spawn(what, alias.to_string()))
+                Ok(Command::Spawn(what, Alias::from(alias)))
             }
             "roominfo" => Ok(Command::RoomInfo),
 
@@ -260,7 +260,10 @@ fn get_room_description(context: &SessionContext, id: &RoomId) -> Result<String,
     let exits = exits.join(", ");
 
     let entities: Vec<String> = context.entities.query_location::<Name, _, _>(&Location { value: id.as_entity() }, |iter| {
-        Ok(iter.map(|(_, n)| n.value.clone()).collect())
+        Ok(iter
+            .filter(|(id, _)| *id != &context.player_id)
+            .map(|(_, n)| n.value.clone())
+            .collect())
     })?;
     let entities = if entities.is_empty() {
         "nothing".into()
@@ -285,7 +288,7 @@ async fn handle_go(context: &mut SessionContext, direction: Direction) -> Result
     let new_position = Location { value: destination_room_id.as_entity().clone() };
     context.entities.update_component(&context.player_id, new_position.clone())
         .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not update position of entity '{:?}'", &context.player_id)))?;
-    persistence::persist_position(&context.player_id, &new_position, &context.pool)
+    persistence::persist_location(&context.player_id, &new_position, &context.pool)
         .await.map_err(|_| CommandExecutionError::Unrecoverable("Failed to update room ID in database".into()))?;
 
     let description = get_room_description(context, destination_room_id)?;
@@ -411,10 +414,15 @@ fn handle_save(context: &SessionContext, target: SaveTarget, path: String) -> Re
             let mut item_data = HashMap::new();
             for (e, (name, spawn)) in items {
                 let alias = context.entities.get_alias(&e)?;
+                let room = match context.world.get_room(&RoomId::from_entity(spawn)) {
+                    Some(r) => r,
+                    None => return Ok(CommandResult::Query(format!("Invalid room ID: {spawn}").into()))
+                };
+                    
                 item_data.insert(e, ItemData {
-                    alias: alias.to_string(),
+                    alias: alias.clone(),
                     name: name,
-                    spawn_location: spawn
+                    spawn_location: room.alias().clone()
                 });
             }
 
@@ -428,7 +436,7 @@ fn handle_save(context: &SessionContext, target: SaveTarget, path: String) -> Re
     Ok(CommandResult::Query(QueryResult { response }))
 }
 
-fn handle_link(context: &SessionContext, direction: Direction, target: String) -> Result<CommandResult, CommandExecutionError> {
+fn handle_link(context: &SessionContext, direction: Direction, target: Alias) -> Result<CommandResult, CommandExecutionError> {
     if !context.is_admin {
         return Ok(CommandResult::Unauthorized)
     }
@@ -509,7 +517,7 @@ fn handle_unlink(context: &SessionContext, direction: Direction) -> Result<Comma
     Ok(CommandResult::Query(response.into()))
 }
 
-fn handle_create(context: &SessionContext, direction: Direction, target: String) -> Result<CommandResult, CommandExecutionError> {
+fn handle_create(context: &SessionContext, direction: Direction, target: Alias) -> Result<CommandResult, CommandExecutionError> {
     if !context.is_admin {
         return Ok(CommandResult::Unauthorized)
     }
@@ -539,14 +547,14 @@ fn handle_create(context: &SessionContext, direction: Direction, target: String)
     Ok(CommandResult::Query(QueryResult { response }))
 }
 
-fn handle_spawn(context: &SessionContext, target: SpawnTarget, alias: String) -> Result<CommandResult, CommandExecutionError> {
+fn handle_spawn(context: &SessionContext, target: SpawnTarget, alias: Alias) -> Result<CommandResult, CommandExecutionError> {
     if !context.is_admin {
         return Ok(CommandResult::Unauthorized)
     }
     
     let current_room_id = get_current_position(context)?;
 
-    let entity_id = match context.entities.spawn(None, alias.clone().into()) {
+    let entity_id = match context.entities.spawn(None, alias.clone()) {
         Ok(id) => id,
         Err(EntityRegistryError::DuplicateAlias(a)) => return Ok(CommandResult::Query(format!("An entity already exists with alias '{a}'").into())),
         _ => return Ok(CommandResult::Query(format!("An unknown error occurred spawning the item.").into()))
