@@ -241,6 +241,29 @@ impl EntityRegistry {
     }
 
     #[allow(private_bounds)]
+    pub fn query2_location<T1, T2, R, F>(&self, location: &Location, f: F) -> Result<R, EntityRegistryError>
+    where
+        T1: ComponentStorage + Clone,
+        T2: ComponentStorage + Clone,
+        F: FnOnce(&mut dyn Iterator<Item = (&EntityId, (&T1, &T2))>) -> Result<R, EntityRegistryError>
+    {
+        let internal = self.internal.read();
+
+        let entities_in_location = internal.locations.id_by_location.get(location);
+
+        let storage1 = T1::storage(&internal);
+        let storage2 = T2::storage(&internal);
+
+        let mut iter = entities_in_location.iter()
+            .into_iter()
+            .flat_map(|ids| ids.iter())
+            .filter_map(|id| storage1.get(id).map(|c| (id, c)))
+            .filter_map(|(id, c1)| storage2.get(id).map(|c2| (id, (c1, c2))));
+
+        f(&mut iter)
+    }
+
+    #[allow(private_bounds)]
     pub fn query3<T1, T2, T3, R, F>(&self, f: F) -> Result<R, EntityRegistryError>
     where
         T1: ComponentStorage,
@@ -572,6 +595,40 @@ mod tests {
 
             // Only one entity is expected since only one has all three components.
             assert_eq!(&e3, e);
+
+            assert!(iter.next().is_none());
+            Ok(())
+        }).unwrap();
+    }
+
+    #[test]
+    fn test_query2_location() {
+        let entities = EntityRegistry::new();
+
+        let e1 = entities.spawn(None, "e1".into()).unwrap();
+        let e2 = entities.spawn(None, "e2".into()).unwrap();
+        let e3 = entities.spawn(None, "e3".into()).unwrap();
+
+        let room1 = RoomId::generate();
+        let room2 = RoomId::generate();
+        let loc1 = Location { value: room1.as_entity() };
+        let loc2 = Location { value: room2.as_entity() };
+
+        entities.update_component(&e1, loc1.clone()).unwrap();
+        entities.update_component(&e1, Name { value: "entity 1".to_string() }).unwrap();
+        entities.update_component(&e2, loc1.clone()).unwrap();
+        entities.update_component(&e2, Name { value: "entity 2".to_string() }).unwrap();
+        entities.update_component(&e2, Item).unwrap();
+        entities.update_component(&e3, loc2.clone()).unwrap();
+        entities.update_component(&e3, Name { value: "entity 3".to_string() }).unwrap();
+
+        entities.query2_location::<Name, Item, _, _>(&loc1, |iter| {
+            let (e, (n, _i)) = iter.next().unwrap();
+
+            // Only one entity is expected since only one exists in the location
+            // with both Name and Item components.
+            assert_eq!(&e2, e);
+            assert_eq!("entity 2", n.value);
 
             assert!(iter.next().is_none());
             Ok(())

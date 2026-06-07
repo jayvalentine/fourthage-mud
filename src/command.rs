@@ -14,6 +14,7 @@ pub enum Command {
     Say(String),
     Who,
     Look,
+    Inventory,
 
     /// Take <keywords>
     Take(Vec<String>),
@@ -162,6 +163,7 @@ impl Command {
             },
             "who" => Ok(Command::Who),
             "look" => Ok(Command::Look),
+            "inventory" => Ok(Command::Inventory),
             "take" => {
                 let keywords = parts.map(|s| s.to_lowercase()).collect::<Vec<String>>();
                 if keywords.is_empty() {
@@ -383,6 +385,21 @@ fn handle_look(context: &SessionContext) -> Result<CommandResult, CommandExecuti
         .ok_or(CommandExecutionError::Unrecoverable(format!("Entity {:?} has no position component", &context.player_id)))?;
     let response = get_room_description(context, &RoomId::from_entity(position.value))?;
     Ok(CommandResult::Query(QueryResult { response }))
+}
+
+fn handle_inventory(context: &SessionContext) -> Result<CommandResult, CommandExecutionError> {
+    let location = Location::new(context.player_id.clone());
+    let items_in_inventory: Vec<String> = context.entities.query2_location::<Item, Name, _, _>(&location, |iter| {
+        let names = iter.map(|(_id, (_, name))| format!("    {name}"));
+        Ok(names.collect())
+    })?;
+
+    let response = if items_in_inventory.is_empty() {
+        "You aren't carrying anything.".into()
+    } else {
+        format!("You are carrying:\n{}", items_in_inventory.join("\n"))
+    };
+    Ok(CommandResult::Query(response.into()))
 }
 
 async fn handle_take(context: &SessionContext, keywords: Vec<String>) -> Result<CommandResult, CommandExecutionError> {
@@ -693,6 +710,7 @@ pub async fn handle_command(context: &mut SessionContext, command: Command) -> R
         Command::Say(sentence) => handle_say(context, &sentence),
         Command::Who => handle_who(context),
         Command::Look => handle_look(context),
+        Command::Inventory => handle_inventory(context),
         Command::Take(target) => handle_take(context, target).await,
 
         Command::Edit(target, field, content) => handle_edit(context, target, field, content),
