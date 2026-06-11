@@ -84,7 +84,7 @@ impl SessionContext {
         let id = entities.spawn(Some(id), format!("player:{username}").into())?;
         entities.update_component(&id, Player)?;
         entities.update_component(&id, position)?;
-        entities.update_component(&id, Name { value: username })?;
+        entities.update_component(&id, Name::from(username))?;
 
         let receiver = event_bus.register(&id)?;
 

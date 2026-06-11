@@ -65,8 +65,9 @@ struct EntityRegistryInternal {
     locations: LocationMap,
     spawn_locations: HashMap<EntityId, SpawnLocation>,
     names: HashMap<EntityId, Name>,
+    descriptions: HashMap<EntityId, Description>,
     players: HashMap<EntityId, Player>,
-    items: HashMap<EntityId, Item>,
+    items: HashMap<EntityId, Item>
 }
 
 trait ComponentStorage {
@@ -95,6 +96,7 @@ impl EntityRegistry {
             locations: LocationMap::new(),
             spawn_locations: HashMap::new(),
             names: HashMap::new(),
+            descriptions: HashMap::new(),
             players: HashMap::new(),
             items: HashMap::new()
         };
@@ -376,8 +378,24 @@ impl ComponentStorage for Location {
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
-pub struct Name {
-    pub value: String
+pub struct Name(String);
+
+impl From<String> for Name {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for Name {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl Name {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 impl ComponentStorage for Name {
@@ -408,7 +426,7 @@ impl ComponentStorage for Name {
 
 impl fmt::Display for Name {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.value)
+        write!(f, "{}", self.0)
     }
 }
 
@@ -512,6 +530,53 @@ impl From<&Location> for SpawnLocation {
     }
 }
 
+#[derive(Clone)]
+pub struct Description(String);
+
+impl From<String> for Description {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for Description {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl fmt::Display for Description {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl ComponentStorage for Description {
+    fn get<'a>(entities: &'a EntityRegistryInternal, entity: &EntityId) -> Option<&'a Self>
+    where Self: Sized
+    {
+        entities.descriptions.get(entity)
+    }
+
+    fn remove(entities: &mut EntityRegistryInternal, entity: &EntityId)
+    where Self: Sized
+    {
+        entities.descriptions.remove(entity);
+    }
+
+    fn update(entities: &mut EntityRegistryInternal, entity: &EntityId, component: Self)
+    where Self: Sized
+    {
+        entities.descriptions.insert(*entity, component);
+    }
+
+    fn storage(entities: &EntityRegistryInternal) -> &HashMap<EntityId, Self>
+    where Self: Sized
+    {
+        &entities.descriptions
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -525,10 +590,10 @@ mod tests {
         let e1 = entities.spawn(None, "e1".into()).unwrap();
         let e2 = entities.spawn(None, "e2".into()).unwrap();
 
-        entities.update_component(&e1, Name { value: "entity 1".to_string() }).unwrap();
+        entities.update_component(&e1, Name::from("entity 1")).unwrap();
 
         let name1 = entities.get_component::<Name>(&e1).unwrap().unwrap();
-        assert_eq!("entity 1", name1.value);
+        assert_eq!("entity 1", name1.as_str());
 
         let name2 = entities.get_component::<Name>(&e2).unwrap();
         assert!(name2.is_none())
@@ -549,17 +614,17 @@ mod tests {
         let loc2 = Location { value: room2.as_entity() };
 
         entities.update_component(&e1, loc1.clone()).unwrap();
-        entities.update_component(&e1, Name { value: "entity 1".to_string() }).unwrap();
+        entities.update_component(&e1, Name::from("entity 1")).unwrap();
         entities.update_component(&e2, loc1.clone()).unwrap();
         entities.update_component(&e3, loc2.clone()).unwrap();
-        entities.update_component(&e3, Name { value: "entity 3".to_string() }).unwrap();
+        entities.update_component(&e3, Name::from("entity 3")).unwrap();
 
         entities.query_location::<Name, _, _>(&loc1, |iter| {
             let (e, n) = iter.next().unwrap();
 
             // Only one entity is expected since only one exists in the location with a Name.
             assert_eq!(&e1, e);
-            assert_eq!("entity 1", n.value);
+            assert_eq!("entity 1", n.as_str());
 
             assert!(iter.next().is_none());
             Ok(())
@@ -575,7 +640,7 @@ mod tests {
         let e3 = entities.spawn(None, "e3".into()).unwrap();
 
         let loc = Location { value: RoomId::generate().as_entity() };
-        let name = Name { value: "Some Name".into() };
+        let name = Name::from("Some Name");
 
         // e1 has location and name but not item.
         entities.update_component(&e1, loc.clone()).unwrap();
@@ -615,12 +680,12 @@ mod tests {
         let loc2 = Location { value: room2.as_entity() };
 
         entities.update_component(&e1, loc1.clone()).unwrap();
-        entities.update_component(&e1, Name { value: "entity 1".to_string() }).unwrap();
+        entities.update_component(&e1, Name::from("entity 1")).unwrap();
         entities.update_component(&e2, loc1.clone()).unwrap();
-        entities.update_component(&e2, Name { value: "entity 2".to_string() }).unwrap();
+        entities.update_component(&e2, Name::from("entity 2")).unwrap();
         entities.update_component(&e2, Item).unwrap();
         entities.update_component(&e3, loc2.clone()).unwrap();
-        entities.update_component(&e3, Name { value: "entity 3".to_string() }).unwrap();
+        entities.update_component(&e3, Name::from("entity 3")).unwrap();
 
         entities.query2_location::<Name, Item, _, _>(&loc1, |iter| {
             let (e, (n, _i)) = iter.next().unwrap();
@@ -628,7 +693,7 @@ mod tests {
             // Only one entity is expected since only one exists in the location
             // with both Name and Item components.
             assert_eq!(&e2, e);
-            assert_eq!("entity 2", n.value);
+            assert_eq!("entity 2", n.as_str());
 
             assert!(iter.next().is_none());
             Ok(())
