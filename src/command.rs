@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 
 use crate::data::ItemData;
 use crate::db::DatabaseError;
@@ -9,11 +10,25 @@ use crate::model::{world::Direction, ids::{EntityId, RoomId, Alias}};
 use crate::session::SessionContext;
 use crate::{data, persistence};
 
+pub struct Keywords(pub Vec<String>);
+
+impl fmt::Display for Keywords {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}",self.0.join(" "))
+    }
+}
+
 pub enum Command {
     Go(Direction),
     Say(String),
     Who,
     Look,
+    Inventory,
+
+    /// take <keywords>
+    Take(Keywords),
+    /// drop <keywords>
+    Drop(Keywords),
 
     // Admin commands
     Edit(EditTarget, EditField, String),
@@ -122,13 +137,15 @@ impl From<DatabaseError> for CommandExecutionError {
 }
 
 impl Command {
-    fn parse_direction(s: &str) -> Option<Direction> {
-        match s {
-            "north" => Some(Direction::North),
-            "south" => Some(Direction::South),
-            "east" => Some(Direction::East),
-            "west" => Some(Direction::West),
-            _ => None
+    fn collect_keywords<I, S>(parts: I) -> Option<Keywords>
+        where I: Iterator<Item = S>,
+              S: ToString
+    {
+        let keywords = parts.map(|s| s.to_string().to_lowercase()).collect::<Vec<String>>();
+        if keywords.is_empty() {
+            None
+        } else {
+            Some(Keywords(keywords))
         }
     }
 
@@ -159,6 +176,23 @@ impl Command {
             },
             "who" => Ok(Command::Who),
             "look" => Ok(Command::Look),
+            "inventory" => Ok(Command::Inventory),
+            "take" => {
+                let keywords = match Self::collect_keywords(parts) {
+                    Some(k) => k,
+                    None => return Err(CommandParseError::InvalidSyntax("Take what?".into()))
+                };
+
+                Ok(Command::Take(keywords))
+            }
+            "drop" => {
+                let keywords = match Self::collect_keywords(parts) {
+                    Some(k) => k,
+                    None => return Err(CommandParseError::InvalidSyntax("Drop what?".into()))
+                };
+
+                Ok(Command::Drop(keywords))
+            }
 
             "edit" => {
                 let target = match parts.next() {
@@ -247,11 +281,10 @@ impl Command {
     }
 }
 
-fn get_current_position(context: &SessionContext) -> Result<RoomId, CommandExecutionError> {
+fn get_current_position(context: &SessionContext) -> Result<Location, CommandExecutionError> {
     context.entities.get_component::<Location>(&context.player_id)
         .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {:?}", &context.player_id)))?
         .ok_or(CommandExecutionError::Unrecoverable(format!("Entity {:?} has no position component", &context.player_id)))
-        .map(|l| RoomId::from_entity(l.value))
 }
 
 fn get_room_description(context: &SessionContext, id: &RoomId) -> Result<String, CommandExecutionError> {
@@ -280,8 +313,39 @@ fn get_room_description(context: &SessionContext, id: &RoomId) -> Result<String,
     Ok(response)
 }
 
+/// Resolves a set of keywords to specific entities in a given context. 
+fn resolve_entities_in_location(context: &SessionContext, location: &Location, keywords: &Keywords) -> Result<Vec<EntityId>, CommandExecutionError> {
+    context.entities.query_location::<Name, _, _>(location, |iter| {
+        let iter = iter.filter_map(|(id, name)| {
+            if keywords.0.iter().all(|k| name.value.to_lowercase().contains(k)) {
+                Some(*id)
+            } else {
+                None
+            }
+        });
+        Ok(iter.collect::<Vec<EntityId>>())
+    }).map_err(CommandExecutionError::from)
+}
+
+fn resolve_entities_in_current_room(context: &SessionContext, keywords: &Keywords) -> Result<Vec<EntityId>, CommandExecutionError> {
+    let location = get_current_position(context)?;
+    resolve_entities_in_location(context, &location, keywords)
+}
+
+fn resolve_entities_in_inventory(context: &SessionContext, keywords: &Keywords) -> Result<Vec<EntityId>, CommandExecutionError> {
+    let location = Location { value: context.player_id };
+    resolve_entities_in_location(context, &location, keywords)
+}
+
+fn get_player_name(context: &SessionContext) -> Result<Name, CommandExecutionError> {
+    context.entities.get_component::<Name>(&context.player_id)
+        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get name for entity: {:?}", context.player_id)))?
+        .ok_or(CommandExecutionError::Unrecoverable(format!("Entity {:?} had no Name component", context.player_id)))
+}
+
 async fn handle_go(context: &mut SessionContext, direction: Direction) -> Result<CommandResult, CommandExecutionError> {
-    let current_room_id = get_current_position(context)?;
+    let location = get_current_position(context)?;
+    let current_room_id = RoomId::from_entity(location.value);
     let current_room = context.world.get_room(&current_room_id)
         .ok_or(CommandExecutionError::Unrecoverable("Could not retrieve room based on current room ID".into()))?;
 
@@ -304,12 +368,9 @@ async fn handle_go(context: &mut SessionContext, direction: Direction) -> Result
 }
 
 fn handle_say(context: &SessionContext, sentence: &str) -> Result<CommandResult, CommandExecutionError> {
-    let name = context.entities.get_component::<Name>(&context.player_id)
-        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get name for entity: {:?}", context.player_id)))?
-        .ok_or(CommandExecutionError::Unrecoverable(format!("Entity {:?} had no Name component", context.player_id)))?;
-    let position = context.entities.get_component::<Location>(&context.player_id)
-        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {:?}", &context.player_id)))?
-        .ok_or(CommandExecutionError::Unrecoverable(format!("Entity {:?} has no position component", &context.player_id)))?;
+    let name = get_player_name(context)?;
+    let position = get_current_position(context)?;
+
     let message = format!("{name} says: {sentence}");
     let result = ActionResult {
         events: vec![
@@ -355,6 +416,99 @@ fn handle_look(context: &SessionContext) -> Result<CommandResult, CommandExecuti
     Ok(CommandResult::Query(QueryResult { response }))
 }
 
+fn handle_inventory(context: &SessionContext) -> Result<CommandResult, CommandExecutionError> {
+    let location = Location::new(context.player_id.clone());
+    let items_in_inventory: Vec<String> = context.entities.query2_location::<Item, Name, _, _>(&location, |iter| {
+        let names = iter.map(|(_id, (_, name))| format!("    {name}"));
+        Ok(names.collect())
+    })?;
+
+    let response = if items_in_inventory.is_empty() {
+        "You aren't carrying anything.".into()
+    } else {
+        format!("You are carrying:\n{}", items_in_inventory.join("\n"))
+    };
+    Ok(CommandResult::Query(response.into()))
+}
+
+async fn handle_take(context: &SessionContext, keywords: Keywords) -> Result<CommandResult, CommandExecutionError> {
+    // Resolve the entity described by the user.
+    let matching = resolve_entities_in_current_room(context, &keywords)?;
+    let target = match matching.len() {
+        0 => return Ok(CommandResult::Query(format!("There is no '{}' here.", keywords).into())),
+        1 => matching.first().unwrap(),
+        _ => return Ok(CommandResult::Query(format!("Which '{}'?", keywords).into()))
+    };
+
+    let item_name = match context.entities.get_component::<Name>(target)? {
+        Some(n) => n,
+        None => return Err(CommandExecutionError::Unrecoverable(format!("Entity {target} has no name (error in name resolution).")))
+    };
+
+    // Check that the resolved entity is actually an item.
+    if context.entities.get_component::<Item>(target)?.is_none() {
+        return Ok(CommandResult::Query(format!("You can't take '{item_name}'!").into()))
+    }
+
+    // Update position of target entity.
+    let new_location = Location::new(context.player_id.clone());
+    context.entities.update_component::<Location>(target, new_location.clone())?;
+    persistence::persist_location(target, &new_location, &context.pool).await?;
+
+    let player_name = get_player_name(context)?;
+    let player_location = get_current_position(context)?;
+    let message = format!("{player_name} picked up '{item_name}'.");
+    let action = ActionResult {
+        events: vec![
+            Event {
+                target: EventTarget::LocationExcept(player_location, context.player_id.clone()),
+                event: GameEvent::Message(message)
+            }
+        ],
+        response: Some(format!("You took '{item_name}'"))
+    };
+    Ok(CommandResult::Action(action))
+}
+
+async fn handle_drop(context: &SessionContext, keywords: Keywords) -> Result<CommandResult, CommandExecutionError> {
+    // Resolve the entity described by the user.
+    let matching = resolve_entities_in_inventory(context, &keywords)?;
+    let target = match matching.len() {
+        0 => return Ok(CommandResult::Query(format!("There is no '{}' in your inventory.", keywords).into())),
+        1 => matching.first().unwrap(),
+        _ => return Ok(CommandResult::Query(format!("Which '{}'?", keywords).into()))
+    };
+
+    let item_name = match context.entities.get_component::<Name>(target)? {
+        Some(n) => n,
+        None => return Err(CommandExecutionError::Unrecoverable(format!("Entity {target} has no name (error in name resolution).")))
+    };
+
+    // Check that the resolved entity is actually an item.
+    if context.entities.get_component::<Item>(target)?.is_none() {
+        return Ok(CommandResult::Query(format!("You can't drop '{item_name}'!").into()))
+    }
+
+    // Update position of target entity.
+    let new_location = get_current_position(context)?;
+    context.entities.update_component::<Location>(target, new_location.clone())?;
+    persistence::persist_location(target, &new_location, &context.pool).await?;
+
+    let player_name = get_player_name(context)?;
+    let player_location = get_current_position(context)?;
+    let message = format!("{player_name} dropped '{item_name}'.");
+    let action = ActionResult {
+        events: vec![
+            Event {
+                target: EventTarget::LocationExcept(player_location, context.player_id.clone()),
+                event: GameEvent::Message(message)
+            }
+        ],
+        response: Some(format!("You dropped '{item_name}'"))
+    };
+    Ok(CommandResult::Action(action))
+}
+
 fn handle_edit(context: &SessionContext, target: EditTarget, field: EditField, content: String) -> Result<CommandResult, CommandExecutionError> {
     if !context.is_admin {
         return Ok(CommandResult::Unauthorized)
@@ -362,7 +516,8 @@ fn handle_edit(context: &SessionContext, target: EditTarget, field: EditField, c
 
     match target {
         EditTarget::Room => {
-            let current_room_id = get_current_position(context)?;
+            let location = get_current_position(context)?;
+            let current_room_id = RoomId::from_entity(location.value);
             let response = if let Some(room) = context.world.get_room(&current_room_id) {
                 let mut updated = Room::clone(&room);
                 match field {
@@ -447,7 +602,8 @@ fn handle_link(context: &SessionContext, direction: Direction, target: Alias) ->
         return Ok(CommandResult::Unauthorized)
     }
 
-    let current_room_id = get_current_position(context)?;
+    let location = get_current_position(context)?;
+    let current_room_id = RoomId::from_entity(location.value);
     let current_room = match context.world.get_room(&current_room_id) {
         Some(r) => r,
         None => return Ok(CommandResult::Query(format!("Could not get current room (ID: {0})", current_room_id).into()))
@@ -490,7 +646,8 @@ fn handle_unlink(context: &SessionContext, direction: Direction) -> Result<Comma
         return Ok(CommandResult::Unauthorized)
     }
 
-    let current_room_id = get_current_position(context)?;
+    let location = get_current_position(context)?;
+    let current_room_id = RoomId::from_entity(location.value);
     let current_room = match context.world.get_room(&current_room_id) {
         Some(r) => r,
         None => return Ok(CommandResult::Query(format!("Could not get current room (ID: {0})", current_room_id).into()))
@@ -528,7 +685,8 @@ fn handle_create(context: &SessionContext, direction: Direction, target: Alias) 
         return Ok(CommandResult::Unauthorized)
     }
 
-    let current_room_id = get_current_position(context)?;
+    let location = get_current_position(context)?;
+    let current_room_id = RoomId::from_entity(location.value);
     let current_room = match context.world.get_room(&current_room_id) {
         Some(r) => r,
         None => return Ok(CommandResult::Query(format!("Could not get current room (ID: {0})", current_room_id).into()))
@@ -558,7 +716,8 @@ async fn handle_spawn(context: &SessionContext, target: SpawnTarget, alias: Alia
         return Ok(CommandResult::Unauthorized)
     }
     
-    let current_room_id = get_current_position(context)?;
+    let location = get_current_position(context)?;
+    let current_room_id = RoomId::from_entity(location.value);
 
     let entity_id = match context.entities.spawn(None, alias.clone()) {
         Ok(id) => id,
@@ -589,7 +748,8 @@ fn handle_roominfo(context: &SessionContext) -> Result<CommandResult, CommandExe
         return Ok(CommandResult::Unauthorized)
     }
 
-    let current_room_id = get_current_position(context)?;
+    let location = get_current_position(context)?;
+    let current_room_id = RoomId::from_entity(location.value);
     let current_room = match context.world.get_room(&current_room_id) {
         Some(r) => r,
         None => return Ok(CommandResult::Query(format!("Could not get current room (ID: {0})", current_room_id).into()))
@@ -618,6 +778,9 @@ pub async fn handle_command(context: &mut SessionContext, command: Command) -> R
         Command::Say(sentence) => handle_say(context, &sentence),
         Command::Who => handle_who(context),
         Command::Look => handle_look(context),
+        Command::Inventory => handle_inventory(context),
+        Command::Take(target) => handle_take(context, target).await,
+        Command::Drop(target) => handle_drop(context, target).await,
 
         Command::Edit(target, field, content) => handle_edit(context, target, field, content),
         Command::Save(target, path) => handle_save(context, target, path),
