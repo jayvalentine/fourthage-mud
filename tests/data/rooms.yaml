@@ -1,0 +1,12 @@
+00000000-0000-0000-0000-000000000001:
+  alias: starting_room
+  name: Starting Room
+  description: The room that you start in.
+  exits:
+    north: 00000000-0000-0000-0000-000000000002
+00000000-0000-0000-0000-000000000002:
+  alias: north_room
+  name: North Room
+  description: A room to the north of the starting room.
+  exits:
+    south: 00000000-0000-0000-0000-000000000001

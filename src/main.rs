@@ -1,48 +1,12 @@
-use std::sync::Arc;
-
+use fourthage_mud::run_server;
+use fourthage_mud::AppError;
 use tokio::net::TcpListener;
-use tokio::io::BufReader;
-
-mod model;
-mod command;
-mod session;
-mod data;
-mod db;
-mod password;
-mod event;
-mod entities;
-mod persistence;
-mod seed;
-
-use model::world::World;
-use event::EventBus;
-
-use crate::entities::EntityRegistry;
-use crate::seed::{ItemSeeder, Seeder};
-
-#[derive(Debug)]
-enum AppError {
-    InitialisationError
-}
+use uuid::uuid;
 
 #[tokio::main]
 async fn main() -> Result<(), AppError> {
-    tracing_subscriber::fmt::init();
-
     let database_url = std::env::var("DATABASE_URL").map_err(|_| {
         tracing::error!("DATABASE_URL not set");
-        AppError::InitialisationError
-    })?;
-
-    tracing::info!("Connecting to database at {database_url}");
-    let pool = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&database_url).await.map_err(|e| {
-            tracing::error!("Failed to connect to database: {e}");
-            AppError::InitialisationError
-        })?;
-    sqlx::migrate!().run(&pool).await.map_err(|e| {
-        tracing::error!("Failed to run database migrations: {e}");
         AppError::InitialisationError
     })?;
 
@@ -51,50 +15,11 @@ async fn main() -> Result<(), AppError> {
        AppError::InitialisationError 
     })?;
 
-    let rooms = data::get_rooms(&format!("{data_path}/rooms/nrath.rooms")).map_err(|e| {
-        tracing::error!("Error loading room data: {e:?}");
-        AppError::InitialisationError
-    })?;
-
-    let world = Arc::new(World::new(rooms));
-    let event_bus = Arc::new(EventBus::new());
-    let entities = Arc::new(EntityRegistry::new());
-
-    ItemSeeder::seed(&format!("{data_path}/nrath.items"), &pool, &world, &entities).await.map_err(|e| {
-        tracing::error!("Failed to seed items: {e:?}");
-        AppError::InitialisationError
-    })?;
 
     let listener = TcpListener::bind("0.0.0.0:8080").await.map_err(|e| {
         tracing::error!("Error starting TCP listener: {e}");
         AppError::InitialisationError
     })?;
-    tracing::info!("Listening on port 8080");
 
-    loop {
-        match listener.accept().await {
-            Ok((socket, addr)) => {
-                tracing::info!("Handling connection from {addr}");
-                let world = world.clone();
-                let pool = pool.clone();
-                let event_bus = event_bus.clone();
-                let entities = entities.clone();
-
-                tokio::spawn(async move {
-                    let (reader, mut writer) = socket.into_split();
-                    let mut reader = BufReader::new(reader);
-
-                    session::run(&mut writer, &mut reader, pool, world, event_bus, entities).await.unwrap_or_else(|e| {
-                        tracing::error!("Error during session from {addr}: {e:?}");
-                    });
-
-                    tracing::info!("Connection from {addr} closed");
-                });
-            },
-            Err(e) => {
-                tracing::error!("Error handling new connection: {e}");
-                continue;
-            }
-        }
-    }
+    run_server(listener, &database_url, &data_path, uuid!("019e5690-0757-7256-97c1-a403f4d347ca")).await
 }
