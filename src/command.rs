@@ -3,7 +3,7 @@ use std::fmt;
 
 use crate::data::ItemData;
 use crate::db::DatabaseError;
-use crate::entities::{EntityRegistryError, Item, Location, Name, Player, SpawnLocation};
+use crate::entities::{Description, EntityRegistryError, Item, Location, Name, Player, SpawnLocation};
 use crate::event::{Event, EventTarget, GameEvent};
 use crate::model::world::{DirectionParseError, Room};
 use crate::model::{world::Direction, ids::{EntityId, RoomId, Alias}};
@@ -29,6 +29,8 @@ pub enum Command {
     Take(Keywords),
     /// drop <keywords>
     Drop(Keywords),
+    /// inspect <keywords>
+    Inspect(Keywords),
 
     // Admin commands
     Edit(EditTarget, EditField, String),
@@ -192,6 +194,14 @@ impl Command {
                 };
 
                 Ok(Command::Drop(keywords))
+            },
+            "inspect" => {
+                let keywords = match Self::collect_keywords(parts) {
+                    Some(k) => k,
+                    None => return Err(CommandParseError::InvalidSyntax("Inspect what?".into()))
+                };
+
+                Ok(Command::Inspect(keywords))
             }
 
             "edit" => {
@@ -313,6 +323,20 @@ fn get_room_description(context: &SessionContext, id: &RoomId) -> Result<String,
     Ok(response)
 }
 
+fn get_entity_name(context: &SessionContext, entity: &EntityId) -> Result<Name, CommandExecutionError> {
+    match context.entities.get_component::<Name>(entity)? {
+        Some(n) => Ok(n),
+        None => Err(CommandExecutionError::Unrecoverable(format!("Entity {entity} has no name (error in name resolution).")))
+    }
+}
+
+fn get_entity_description(context: &SessionContext, entity: &EntityId) -> Result<Option<Description>, CommandExecutionError> {
+    match context.entities.get_component::<Description>(entity)? {
+        Some(d) => Ok(Some(d)),
+        None => Ok(None)
+    }
+}
+
 /// Resolves a set of keywords to specific entities in a given context. 
 fn resolve_entities_in_location(context: &SessionContext, location: &Location, keywords: &Keywords) -> Result<Vec<EntityId>, CommandExecutionError> {
     context.entities.query_location::<Name, _, _>(location, |iter| {
@@ -335,6 +359,14 @@ fn resolve_entities_in_current_room(context: &SessionContext, keywords: &Keyword
 fn resolve_entities_in_inventory(context: &SessionContext, keywords: &Keywords) -> Result<Vec<EntityId>, CommandExecutionError> {
     let location = Location { value: context.player_id };
     resolve_entities_in_location(context, &location, keywords)
+}
+
+/// Resolve entities in either the current room or the player's inventory.
+fn resolve_entities_in_context(context: &SessionContext, keywords: &Keywords) -> Result<Vec<EntityId>, CommandExecutionError> {
+    let mut in_room = resolve_entities_in_current_room(context, keywords)?;
+    let mut in_inventory = resolve_entities_in_inventory(context, keywords)?;
+    in_inventory.append(&mut in_room);
+    Ok(in_inventory)
 }
 
 fn get_player_name(context: &SessionContext) -> Result<Name, CommandExecutionError> {
@@ -440,10 +472,7 @@ async fn handle_take(context: &SessionContext, keywords: Keywords) -> Result<Com
         _ => return Ok(CommandResult::Query(format!("Which '{}'?", keywords).into()))
     };
 
-    let item_name = match context.entities.get_component::<Name>(target)? {
-        Some(n) => n,
-        None => return Err(CommandExecutionError::Unrecoverable(format!("Entity {target} has no name (error in name resolution).")))
-    };
+    let item_name = get_entity_name(context, target)?;
 
     // Check that the resolved entity is actually an item.
     if context.entities.get_component::<Item>(target)?.is_none() {
@@ -479,10 +508,7 @@ async fn handle_drop(context: &SessionContext, keywords: Keywords) -> Result<Com
         _ => return Ok(CommandResult::Query(format!("Which '{}'?", keywords).into()))
     };
 
-    let item_name = match context.entities.get_component::<Name>(target)? {
-        Some(n) => n,
-        None => return Err(CommandExecutionError::Unrecoverable(format!("Entity {target} has no name (error in name resolution).")))
-    };
+    let item_name = get_entity_name(context, target)?;
 
     // Check that the resolved entity is actually an item.
     if context.entities.get_component::<Item>(target)?.is_none() {
@@ -507,6 +533,25 @@ async fn handle_drop(context: &SessionContext, keywords: Keywords) -> Result<Com
         response: Some(format!("You dropped '{item_name}'"))
     };
     Ok(CommandResult::Action(action))
+}
+
+fn handle_inspect(context: &SessionContext, keywords: Keywords) -> Result<CommandResult, CommandExecutionError> {
+    // Resolve the entity described by the user.
+    let matching = resolve_entities_in_context(context, &keywords)?;
+    let target = match matching.len() {
+        0 => return Ok(CommandResult::Query(format!("There is no '{}' in your inventory.", keywords).into())),
+        1 => matching.first().unwrap(),
+        _ => return Ok(CommandResult::Query(format!("Which '{}'?", keywords).into()))
+    };
+
+    let item_name = get_entity_name(context, target)?;
+    let item_description = get_entity_description(context, target)?;
+    let item_description = match item_description {
+        Some(d) => format!("\n\n{d}"),
+        None => "".into()
+    };
+    let response = format!("{item_name}{item_description}");
+    Ok(CommandResult::Query(response.into()))
 }
 
 fn handle_edit(context: &SessionContext, target: EditTarget, field: EditField, content: String) -> Result<CommandResult, CommandExecutionError> {
@@ -782,6 +827,7 @@ pub async fn handle_command(context: &mut SessionContext, command: Command) -> R
         Command::Inventory => handle_inventory(context),
         Command::Take(target) => handle_take(context, target).await,
         Command::Drop(target) => handle_drop(context, target).await,
+        Command::Inspect(target) => handle_inspect(context, target),
 
         Command::Edit(target, field, content) => handle_edit(context, target, field, content),
         Command::Save(target, path) => handle_save(context, target, path),

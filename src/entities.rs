@@ -530,6 +530,7 @@ impl From<&Location> for SpawnLocation {
     }
 }
 
+#[derive(Clone)]
 pub struct Description(String);
 
 impl From<String> for Description {
