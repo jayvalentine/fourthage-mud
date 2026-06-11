@@ -1,6 +1,6 @@
 use sqlx::PgPool;
 
-use crate::{data::{self, DataLoadError}, db::DatabaseError, entities::{EntityRegistry, EntityRegistryError, Item, Location, Name, SpawnLocation}, model::{ids::Alias, world::World}, persistence};
+use crate::{data::{self, DataLoadError}, db::DatabaseError, entities::{Description, EntityRegistry, EntityRegistryError, Item, Location, Name, SpawnLocation}, model::{ids::Alias, world::World}, persistence};
 
 #[derive(Debug)]
 pub enum SeedError {
@@ -43,21 +43,26 @@ impl Seeder for ItemSeeder {
     async fn seed(data_file: &str, pool: &PgPool, world: &World, entities: &EntityRegistry) -> Result<(), SeedError> {
         let items = data::load_items(data_file)?;
 
-        for (id, item) in &items {
+        let mut seeded_count: usize = 0;
+
+        for (id, item) in items {
             let room_id = world.resolve_alias(&item.spawn_location)
                 .ok_or(SeedError::UnknownAlias(item.spawn_location.clone()))?;
 
             let location = Location { value: room_id.as_entity() };
-            let location = persistence::seed_location(id, &location, pool).await?;
+            let location = persistence::seed_location(&id, &location, pool).await?;
 
-            let id = entities.spawn(Some(*id), item.alias.clone())?;
+            let id = entities.spawn(Some(id), item.alias.clone())?;
             entities.update_component(&id, Item)?;
-            entities.update_component(&id, Name { value: item.name.clone() })?;
+            entities.update_component(&id, Name::from(item.name))?;
+            entities.update_component(&id, Description::from(item.description))?;
             entities.update_component(&id, location)?;
             entities.update_component(&id, SpawnLocation { value: room_id.as_entity() })?;
+
+            seeded_count += 1;
         }
 
-        tracing::debug!("Seeded {} items.", items.len());
+        tracing::debug!("Seeded {} items.", seeded_count);
 
         Ok(())
     }

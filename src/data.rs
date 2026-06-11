@@ -109,6 +109,7 @@ pub fn save_rooms(file: &str, rooms: &HashMap<RoomId, Arc<Room>>) -> Result<(), 
 pub struct ItemData {
     pub alias: Alias,
     pub name: String,
+    pub description: String,
     pub spawn_location: Alias
 }
 

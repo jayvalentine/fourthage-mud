@@ -300,7 +300,7 @@ fn get_room_description(context: &SessionContext, id: &RoomId) -> Result<String,
     let entities: Vec<String> = context.entities.query_location::<Name, _, _>(&Location { value: id.as_entity() }, |iter| {
         Ok(iter
             .filter(|(id, _)| *id != &context.player_id)
-            .map(|(_, n)| n.value.clone())
+            .map(|(_, n)| n.to_string())
             .collect())
     })?;
     let entities = if entities.is_empty() {
@@ -317,7 +317,7 @@ fn get_room_description(context: &SessionContext, id: &RoomId) -> Result<String,
 fn resolve_entities_in_location(context: &SessionContext, location: &Location, keywords: &Keywords) -> Result<Vec<EntityId>, CommandExecutionError> {
     context.entities.query_location::<Name, _, _>(location, |iter| {
         let iter = iter.filter_map(|(id, name)| {
-            if keywords.0.iter().all(|k| name.value.to_lowercase().contains(k)) {
+            if keywords.0.iter().all(|k| name.as_str().to_lowercase().contains(k)) {
                 Some(*id)
             } else {
                 None
@@ -541,7 +541,7 @@ fn handle_edit(context: &SessionContext, target: EditTarget, field: EditField, c
             match field {
                 EditField::Description => Ok(CommandResult::Query("Cannot edit entity description yet.".into())),
                 EditField::Name => {
-                    let name = Name { value: content };
+                    let name = Name::from(content);
                     context.entities.update_component(&entity_id, name)?;
                     Ok(CommandResult::Query(format!("Updated name of '{alias}'").into()))
                 }
@@ -569,7 +569,7 @@ fn handle_save(context: &SessionContext, target: SaveTarget, path: String) -> Re
         },
         SaveTarget::Items => {
             let items: HashMap<EntityId, (String, EntityId)> = context.entities.query3::<Item, Name, SpawnLocation, _, _>(|iter| {
-                Ok(iter.map(|(e, (_, name, spawn))| (e.clone(), (name.value.clone(), spawn.value))).collect())
+                Ok(iter.map(|(e, (_, name, spawn))| (e.clone(), (name.to_string(), spawn.value))).collect())
             })?;
             let mut item_data = HashMap::new();
             for (e, (name, spawn)) in items {
@@ -583,6 +583,7 @@ fn handle_save(context: &SessionContext, target: SaveTarget, path: String) -> Re
                 item_data.insert(e, ItemData {
                     alias: alias.clone(),
                     name: name,
+                    description: "No Description".into(),
                     spawn_location: room.alias().clone()
                 });
             }
@@ -730,7 +731,7 @@ async fn handle_spawn(context: &SessionContext, target: SpawnTarget, alias: Alia
     context.entities.update_component(&entity_id, SpawnLocation::from(&location))?;
     context.entities.update_component(&entity_id, location)?;
 
-    let name = Name { value: "Unnamed item".into() };
+    let name = Name::from("Unnamed Item");
     context.entities.update_component(&entity_id, name)?;
 
     // Generate marker component depending on spawn target.
