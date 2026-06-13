@@ -9,7 +9,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use tokio::{net::TcpStream, time::sleep};
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use fourthage_mud::run_server;
 
@@ -54,10 +54,19 @@ impl TestClient {
     }
 
     pub async fn recv(&mut self) -> String {
-        let mut response: [u8;1024] = [0;1024];
-        self.reader.read(&mut response).await
-            .expect("Failed to read response");
-        let response = String::from_utf8_lossy(&response);
+        let mut response = String::new();
+        loop {
+            let mut line = String::new();
+            match tokio::time::timeout(
+                Duration::from_millis(1000),
+                self.reader.read_line(&mut line)
+            ).await {
+                Ok(Ok(0)) => break,  // connection closed
+                Ok(Ok(_)) => response.push_str(&line),
+                Ok(Err(e)) => panic!("Error reading response: {e}"),
+                Err(_) => break,  // timeout - assume response complete
+            }
+        }
         response.trim().to_string()
     }
 
