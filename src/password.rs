@@ -1,6 +1,7 @@
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
 use argon2::password_hash::{PasswordHash, SaltString, rand_core::OsRng};
 
+#[derive(Debug)]
 pub enum PasswordError {
     InvalidHash,
     CouldNotHash

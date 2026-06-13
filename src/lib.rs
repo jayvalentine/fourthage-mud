@@ -28,6 +28,12 @@ pub enum AppError {
     InitialisationError
 }
 
+/// Helper function for password hashing for external services.
+pub fn test_hash_password(password: &str) -> String {
+    // Call your real hashing logic
+    crate::password::hash_password(password).expect("Failed to hash password")
+}
+
 async fn accept_loop(listener: TcpListener, world: Arc<World>, pool: sqlx::PgPool, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) {
     loop {
         match listener.accept().await {

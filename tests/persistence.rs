@@ -1,10 +1,12 @@
 mod common;
 use sqlx::PgPool;
 
-use crate::common::TestServer;
+use crate::common::{TestServer, create_test_account};
 
-#[sqlx::test(migrations = "./migrations", fixtures("accounts"))]
+#[sqlx::test(migrations = "./migrations")]
 async fn test_persist_location(pool: PgPool) {
+    create_test_account(&pool, "player1", "password", false).await;
+
     let server = TestServer::start(&pool).await;
 
     let mut client = server.connect_as("player1", "password").await;
@@ -23,8 +25,10 @@ async fn test_persist_location(pool: PgPool) {
     assert!(response.contains("North Room"));
 }
 
-#[sqlx::test(migrations = "./migrations", fixtures("accounts"))]
+#[sqlx::test(migrations = "./migrations")]
 async fn test_persist_item(pool: PgPool) {
+    create_test_account(&pool, "player1", "password", false).await;
+
     let server = TestServer::start(&pool).await;
 
     let mut client = server.connect_as("player1", "password").await;

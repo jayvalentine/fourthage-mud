@@ -11,7 +11,20 @@ use std::time::{Duration, Instant};
 use tokio::{net::TcpStream, time::sleep};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-use fourthage_mud::run_server;
+use fourthage_mud::{run_server, test_hash_password};
+
+pub async fn create_test_account(pool: &PgPool, username: &str, password: &str, is_admin: bool) -> Result<(), sqlx::Error> {
+    let hash = test_hash_password(password);
+    sqlx::query(
+        "INSERT INTO accounts (username, password_hash, is_admin) VALUES ($1, $2, $3)"
+    )
+    .bind(username)
+    .bind(&hash)
+    .bind(is_admin)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
 
 async fn wait_for_port(addr: &str, timeout: Duration) -> std::io::Result<()> {
     let deadline = Instant::now() + timeout;
