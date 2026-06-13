@@ -96,7 +96,7 @@ async fn game_loop(context: Arc<SystemContext>, systems: Vec<Arc<dyn System>>) -
         if elapsed > TICK_RATE {
             tracing::warn!("Game loop tick took longer than expected: {:?}", elapsed);
         } else {
-            tracing::debug!("Game loop tick done.");
+            tracing::debug!("Game loop tick done in {:?}.", elapsed);
         }
     }
 }
