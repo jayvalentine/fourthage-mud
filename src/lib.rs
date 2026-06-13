@@ -24,12 +24,20 @@ use uuid::Uuid;
 
 use crate::entities::EntityRegistry;
 use crate::model::ids::RoomId;
+use crate::persistence::PersistenceSystem;
 use crate::seed::{ItemSeeder, Seeder};
-use crate::system::{System, SystemContext};
+use crate::system::{System, SystemContext, SystemError};
 
 #[derive(Debug)]
 pub enum AppError {
-    InitialisationError
+    InitialisationError,
+    SystemExecutionError(SystemError)
+}
+
+impl From<SystemError> for AppError {
+    fn from(value: SystemError) -> Self {
+        AppError::SystemExecutionError(value)
+    }
 }
 
 /// Helper function for password hashing for external services.
@@ -69,13 +77,13 @@ async fn accept_loop(listener: TcpListener, world: Arc<World>, pool: sqlx::PgPoo
 
 const TICK_RATE: Duration = Duration::from_secs(1);
 
-async fn game_loop(context: Arc<SystemContext>, systems: Vec<Arc<dyn System>>) {
+async fn game_loop(context: Arc<SystemContext>, systems: Vec<Arc<dyn System>>) -> Result<(), AppError> {
     let mut interval = interval(TICK_RATE);
     loop {
         interval.tick().await;
         tracing::debug!("Game loop tick...");
         for system in &systems {
-            system.run(&context).await;
+            system.run(&context).await?;
         }
         tracing::debug!("Game loop tick done.");
     }
@@ -112,7 +120,11 @@ pub async fn run_server(listener: TcpListener, shutdown_rx: Receiver<()>, databa
 
     let system_context = Arc::new(SystemContext::new(entities.clone(), world.clone(), pool.clone(), event_bus.clone()));
 
-    let game_loop_handle = tokio::spawn(game_loop(system_context, Vec::new()));
+    let systems = vec![
+        Arc::new(PersistenceSystem) as Arc<dyn System>
+    ];
+
+    let game_loop_handle = tokio::spawn(game_loop(system_context, systems));
 
     tracing::info!("Listening on port {}", listener.local_addr().map(|addr| addr.port()).unwrap_or(0));
 
