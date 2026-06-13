@@ -1,6 +1,7 @@
 use fourthage_mud::run_server;
 use fourthage_mud::AppError;
 use tokio::net::TcpListener;
+use tokio::signal;
 use uuid::uuid;
 
 #[tokio::main]
@@ -23,7 +24,15 @@ async fn main() -> Result<(), AppError> {
         AppError::InitialisationError
     })?;
 
-    let (_, shutdown_rx) = tokio::sync::oneshot::channel();
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+    tokio::spawn(async move {
+        if let Err(e) = signal::ctrl_c().await {
+            tracing::error!("Failed to listen for Ctrl+C: {e}");
+            return;
+        }
+        tracing::info!("Ctrl+C received, shutting down...");
+        let _ = shutdown_tx.send(());
+    });
 
     run_server(listener, shutdown_rx, &database_url, &data_path, uuid!("019e5690-0757-7256-97c1-a403f4d347ca")).await
 }

@@ -9,6 +9,7 @@ edition = "2024"
 [dependencies]
 argon2 = "0.5.3"
 fourthage-mud-macros = { path = "./fourthage-mud-macros" }
+async-trait = "0.1.89"
 parking_lot = "0.12.5"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_yaml = "0.9.34"

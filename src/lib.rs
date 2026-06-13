@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::net::TcpListener;
 use tokio::io::BufReader;
@@ -13,15 +14,18 @@ mod event;
 mod entities;
 mod persistence;
 mod seed;
+mod system;
 
 use model::world::World;
 use event::EventBus;
 use tokio::sync::oneshot::Receiver;
+use tokio::time::interval;
 use uuid::Uuid;
 
 use crate::entities::EntityRegistry;
 use crate::model::ids::RoomId;
 use crate::seed::{ItemSeeder, Seeder};
+use crate::system::{System, SystemContext};
 
 #[derive(Debug)]
 pub enum AppError {
@@ -63,6 +67,20 @@ async fn accept_loop(listener: TcpListener, world: Arc<World>, pool: sqlx::PgPoo
     }
 }
 
+const TICK_RATE: Duration = Duration::from_secs(1);
+
+async fn game_loop(context: Arc<SystemContext>, systems: Vec<Arc<dyn System>>) {
+    let mut interval = interval(TICK_RATE);
+    loop {
+        interval.tick().await;
+        tracing::debug!("Game loop tick...");
+        for system in &systems {
+            system.run(&context).await;
+        }
+        tracing::debug!("Game loop tick done.");
+    }
+}
+
 pub async fn run_server(listener: TcpListener, shutdown_rx: Receiver<()>, database_url: &str, data_path: &str, starting_room: Uuid) -> Result<(), AppError> {
     tracing::info!("Starting server...");
 
@@ -92,6 +110,10 @@ pub async fn run_server(listener: TcpListener, shutdown_rx: Receiver<()>, databa
         AppError::InitialisationError
     })?;
 
+    let system_context = Arc::new(SystemContext::new(entities.clone(), world.clone(), pool.clone(), event_bus.clone()));
+
+    let game_loop_handle = tokio::spawn(game_loop(system_context, Vec::new()));
+
     tracing::info!("Listening on port {}", listener.local_addr().map(|addr| addr.port()).unwrap_or(0));
 
     tokio::select! {
@@ -100,6 +122,8 @@ pub async fn run_server(listener: TcpListener, shutdown_rx: Receiver<()>, databa
             tracing::info!("Shutdown signal received, stopping server");
         }
     }
+
+    game_loop_handle.abort();
 
     Ok(())
 }
