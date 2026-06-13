@@ -86,7 +86,10 @@ async fn game_loop(context: Arc<SystemContext>, systems: Vec<Arc<dyn System>>) -
         let tick_start = Instant::now();
         tracing::debug!("Game loop tick...");
         for system in &systems {
+            let system_start = Instant::now();
             system.run(&context).await?;
+            let system_elapsed = system_start.elapsed();
+            tracing::debug!("System {:?} completed in {:?}", system.name(), system_elapsed);
         }
 
         let elapsed = tick_start.elapsed();

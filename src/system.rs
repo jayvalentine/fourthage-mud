@@ -42,5 +42,7 @@ impl SystemContext {
 
 #[async_trait]
 pub trait System: Send + Sync {
+    fn name(&self) -> &str;
+    
     async fn run(&self, context: &SystemContext) -> Result<(), SystemError>;
 }

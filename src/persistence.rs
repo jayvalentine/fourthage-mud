@@ -36,6 +36,10 @@ impl From<DatabaseError> for SystemError {
 
 #[async_trait]
 impl System for PersistenceSystem {
+    fn name(&self) -> &str {
+        "PersistenceSystem"
+    }
+    
     async fn run(&self, context: &SystemContext) -> Result<(), SystemError> {
         let locations = context.entities().query::<Location, _, _>(|iter| {
             Ok(iter
