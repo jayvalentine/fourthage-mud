@@ -1,6 +1,7 @@
 use core::fmt;
 use std::{collections::{HashMap, HashSet}};
 use parking_lot::RwLock;
+use fourthage_mud_macros::ComponentStorage;
 
 use crate::{event::{EventTarget, EventTargetResolver}, model::ids::{Alias, EntityId}};
 
@@ -378,6 +379,8 @@ impl ComponentStorage for Location {
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
+#[derive(ComponentStorage)]
+#[component(field = "names")]
 pub struct Name(String);
 
 impl From<String> for Name {
@@ -398,124 +401,26 @@ impl Name {
     }
 }
 
-impl ComponentStorage for Name {
-    fn get<'a>(entities: &'a EntityRegistryInternal, entity: &EntityId) -> Option<&'a Self>
-    where Self: Sized
-    {
-        entities.names.get(entity)
-    }
-
-    fn update(entities: &mut EntityRegistryInternal, entity: &EntityId, component: Self)
-    where Self: Sized
-    {
-        entities.names.insert(entity.clone(), component);
-    }
-
-    fn remove(entities: &mut EntityRegistryInternal, entity: &EntityId)
-    where Self: Sized
-    {
-        entities.names.remove(entity);
-    }
-
-    fn storage(entities: &EntityRegistryInternal) -> &HashMap<EntityId, Self>
-    where Self: Sized
-    {
-        &entities.names
-    }
-}
-
 impl fmt::Display for Name {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
+#[derive(ComponentStorage)]
+#[component(field = "players")]
 pub struct Player;
-
-impl ComponentStorage for Player {
-    fn get<'a>(entities: &'a EntityRegistryInternal, entity: &EntityId) -> Option<&'a Self>
-    where Self: Sized
-    {
-        entities.players.get(entity)
-    }
-
-    fn remove(entities: &mut EntityRegistryInternal, entity: &EntityId)
-    where Self: Sized
-    {
-        entities.players.remove(entity);
-    }
-
-    fn update(entities: &mut EntityRegistryInternal, entity: &EntityId, component: Self)
-    where Self: Sized
-    {
-        entities.players.insert(entity.clone(), component);
-    }
-
-    fn storage(entities: &EntityRegistryInternal) -> &HashMap<EntityId, Self>
-    where Self: Sized
-    {
-        &entities.players
-    }
-}
 
 /// Marker component for items.
 #[derive(Clone)]
+#[derive(ComponentStorage)]
+#[component(field = "items")]
 pub struct Item;
 
-impl ComponentStorage for Item {
-    fn get<'a>(entities: &'a EntityRegistryInternal, entity: &EntityId) -> Option<&'a Self>
-    where Self: Sized
-    {
-        entities.items.get(entity)
-    }
-
-    fn remove(entities: &mut EntityRegistryInternal, entity: &EntityId)
-    where Self: Sized
-    {
-        entities.items.remove(entity);
-    }
-
-    fn update(entities: &mut EntityRegistryInternal, entity: &EntityId, component: Self)
-    where Self: Sized
-    {
-        entities.items.insert(entity.clone(), component);
-    }
-
-    fn storage(entities: &EntityRegistryInternal) -> &HashMap<EntityId, Self>
-    where Self: Sized
-    {
-        &entities.items
-    }
-}
-
+#[derive(ComponentStorage)]
+#[component(field = "spawn_locations")]
 pub struct SpawnLocation {
     pub value: EntityId
-}
-
-impl ComponentStorage for SpawnLocation {
-    fn get<'a>(entities: &'a EntityRegistryInternal, entity: &EntityId) -> Option<&'a Self>
-    where Self: Sized
-    {
-        entities.spawn_locations.get(entity)
-    }
-
-    fn remove(entities: &mut EntityRegistryInternal, entity: &EntityId)
-    where Self: Sized
-    {
-        entities.spawn_locations.remove(entity);
-    }
-
-    fn update(entities: &mut EntityRegistryInternal, entity: &EntityId, component: Self)
-    where Self: Sized
-    {
-        entities.spawn_locations.insert(entity.clone(), component);
-    }
-
-    fn storage(entities: &EntityRegistryInternal) -> &HashMap<EntityId, Self>
-    where Self: Sized
-    {
-        &entities.spawn_locations
-    }
 }
 
 impl From<Location> for SpawnLocation {
@@ -531,6 +436,8 @@ impl From<&Location> for SpawnLocation {
 }
 
 #[derive(Clone)]
+#[derive(ComponentStorage)]
+#[component(field = "descriptions")]
 pub struct Description(String);
 
 impl From<String> for Description {
@@ -548,32 +455,6 @@ impl From<&str> for Description {
 impl fmt::Display for Description {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
-    }
-}
-
-impl ComponentStorage for Description {
-    fn get<'a>(entities: &'a EntityRegistryInternal, entity: &EntityId) -> Option<&'a Self>
-    where Self: Sized
-    {
-        entities.descriptions.get(entity)
-    }
-
-    fn remove(entities: &mut EntityRegistryInternal, entity: &EntityId)
-    where Self: Sized
-    {
-        entities.descriptions.remove(entity);
-    }
-
-    fn update(entities: &mut EntityRegistryInternal, entity: &EntityId, component: Self)
-    where Self: Sized
-    {
-        entities.descriptions.insert(*entity, component);
-    }
-
-    fn storage(entities: &EntityRegistryInternal) -> &HashMap<EntityId, Self>
-    where Self: Sized
-    {
-        &entities.descriptions
     }
 }
 
