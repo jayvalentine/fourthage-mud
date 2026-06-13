@@ -48,27 +48,24 @@ impl TestClient {
         TestClient { reader, writer }
     }
 
-    pub async fn send_with_response(&mut self, message: &str) -> Result<String, std::io::Error> {
-        self.writer.write_all(message.as_bytes()).await?;
-        self.writer.write_all(b"\r\n").await?;
-
-        let mut response: [u8;1024] = [0;1024];
-        self.reader.read(&mut response).await?;
-        let response = String::from_utf8_lossy(&response);
-        Ok(response.trim().to_string())
+    pub async fn send_with_response(&mut self, message: &str) -> String {
+        self.send(message).await;
+        self.recv().await
     }
 
-    pub async fn recv(&mut self) -> Result<String, std::io::Error> {
+    pub async fn recv(&mut self) -> String {
         let mut response: [u8;1024] = [0;1024];
-        self.reader.read(&mut response).await?;
+        self.reader.read(&mut response).await
+            .expect("Failed to read response");
         let response = String::from_utf8_lossy(&response);
-        Ok(response.trim().to_string())
+        response.trim().to_string()
     }
 
-    pub async fn send(&mut self, message: &str) -> Result<(), std::io::Error> {
-        self.writer.write_all(message.as_bytes()).await?;
-        self.writer.write_all(b"\r\n").await?;
-        Ok(())
+    pub async fn send(&mut self, message: &str) {
+        self.writer.write_all(message.as_bytes()).await
+            .expect("Failed to send message");
+        self.writer.write_all(b"\r\n").await
+            .expect("Failed to send newline");
     }
 }
 
@@ -130,13 +127,13 @@ impl TestServer {
     pub async fn connect_as(&self, username: &str, password: &str) -> TestClient {
         let mut client = self.connect().await;
         
-        let response = client.recv().await.expect("Failed to receive prompt");
+        let response = client.recv().await;
         assert!(response.contains("username:"));
 
-        let response = client.send_with_response(username).await.expect("Failed to send username");
+        let response = client.send_with_response(username).await;
         assert!(response.contains("password:"));
 
-        let response = client.send_with_response(password).await.expect("Failed to send password");
+        let response = client.send_with_response(password).await;
         assert!(response.contains(&format!("Welcome {}", username)));
 
         client
