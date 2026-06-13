@@ -79,7 +79,7 @@ pub struct Room {
     alias: Alias,
     name: String,
     description: String,
-    exits: HashMap<Direction, RoomId>
+    exits: HashMap<Direction, RoomId>,
 }
 
 impl Room {
@@ -139,11 +139,12 @@ struct WorldInner {
 }
 
 pub struct World {
-    inner: RwLock<WorldInner>
+    inner: RwLock<WorldInner>,
+    starting_room: RoomId
 }
 
 impl World {
-    pub fn new(rooms: HashMap<RoomId, Room>) -> World {
+    pub fn new(rooms: HashMap<RoomId, Room>, starting_room: RoomId) -> World {
         let mut aliases = HashMap::new();
         for (id, room) in rooms.iter() {
             aliases.insert(room.alias.clone(), id.clone());
@@ -155,7 +156,8 @@ impl World {
             inner: RwLock::new(WorldInner {
                 rooms,
                 aliases
-            })
+            }),
+            starting_room
         }
     }
 
@@ -183,7 +185,7 @@ impl World {
         RwLockReadGuard::map(self.inner.read(), |inner| &inner.rooms)
     }
 
-    pub fn default_room_id() -> RoomId {
-        RoomId::from_uuid(uuid!("019e5690-0757-7256-97c1-a403f4d347ca"))
+    pub fn default_room_id(&self) -> RoomId {
+        self.starting_room.clone()
     }
 }

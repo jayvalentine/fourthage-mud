@@ -1,0 +1,5 @@
+00000000-0000-0000-0000-000000000003:
+  alias: item:test
+  name: 'Test Item'
+  description: 'A simple test item for persistence testing.'
+  spawn_location: starting_room

@@ -221,7 +221,7 @@ async fn run_internal(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedR
 
     let location = match persistence::load_location(&account.id, &pool).await? {
         Some(l) => l,
-        None => Location { value: World::default_room_id().as_entity() }
+        None => Location { value: world.default_room_id().as_entity() }
     };
     let mut session_context = SessionContext::new(account.id, account.username, account.is_admin, location, world, pool, event_bus, entities)?;
     welcome(writer, &session_context).await?;
