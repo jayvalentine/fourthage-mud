@@ -19,7 +19,7 @@ mod system;
 use model::world::World;
 use event::EventBus;
 use tokio::sync::oneshot::Receiver;
-use tokio::time::interval;
+use tokio::time::{Instant, interval, MissedTickBehavior};
 use uuid::Uuid;
 
 use crate::entities::EntityRegistry;
@@ -79,13 +79,22 @@ const TICK_RATE: Duration = Duration::from_secs(1);
 
 async fn game_loop(context: Arc<SystemContext>, systems: Vec<Arc<dyn System>>) -> Result<(), AppError> {
     let mut interval = interval(TICK_RATE);
+    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
     loop {
         interval.tick().await;
+        let tick_start = Instant::now();
         tracing::debug!("Game loop tick...");
         for system in &systems {
             system.run(&context).await?;
         }
-        tracing::debug!("Game loop tick done.");
+
+        let elapsed = tick_start.elapsed();
+        if elapsed > TICK_RATE {
+            tracing::warn!("Game loop tick took longer than expected: {:?}", elapsed);
+        } else {
+            tracing::debug!("Game loop tick done.");
+        }
     }
 }
 
