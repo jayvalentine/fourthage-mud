@@ -16,6 +16,7 @@ mod seed;
 
 use model::world::World;
 use event::EventBus;
+use tokio::sync::oneshot::Receiver;
 use uuid::Uuid;
 
 use crate::entities::EntityRegistry;
@@ -27,8 +28,37 @@ pub enum AppError {
     InitialisationError
 }
 
-pub async fn run_server(listener: TcpListener, database_url: &str, data_path: &str, starting_room: Uuid) -> Result<(), AppError> {
-    tracing_subscriber::fmt::init();
+async fn accept_loop(listener: TcpListener, world: Arc<World>, pool: sqlx::PgPool, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) {
+    loop {
+        match listener.accept().await {
+            Ok((socket, addr)) => {
+                tracing::info!("Handling connection from {addr}");
+                let world = world.clone();
+                let pool = pool.clone();
+                let event_bus = event_bus.clone();
+                let entities = entities.clone();
+
+                tokio::spawn(async move {
+                    let (reader, mut writer) = socket.into_split();
+                    let mut reader = BufReader::new(reader);
+
+                    session::run(&mut writer, &mut reader, pool, world, event_bus, entities).await.unwrap_or_else(|e| {
+                        tracing::error!("Error during session from {addr}: {e:?}");
+                    });
+
+                    tracing::info!("Connection from {addr} closed");
+                });
+            },
+            Err(e) => {
+                tracing::error!("Error handling new connection: {e}");
+                continue;
+            }
+        }
+    }
+}
+
+pub async fn run_server(listener: TcpListener, shutdown_rx: Receiver<()>, database_url: &str, data_path: &str, starting_room: Uuid) -> Result<(), AppError> {
+    tracing::info!("Starting server...");
 
     tracing::info!("Connecting to database at {database_url}");
     let pool = sqlx::postgres::PgPoolOptions::new()
@@ -58,30 +88,12 @@ pub async fn run_server(listener: TcpListener, database_url: &str, data_path: &s
 
     tracing::info!("Listening on port {}", listener.local_addr().map(|addr| addr.port()).unwrap_or(0));
 
-    loop {
-        match listener.accept().await {
-            Ok((socket, addr)) => {
-                tracing::info!("Handling connection from {addr}");
-                let world = world.clone();
-                let pool = pool.clone();
-                let event_bus = event_bus.clone();
-                let entities = entities.clone();
-
-                tokio::spawn(async move {
-                    let (reader, mut writer) = socket.into_split();
-                    let mut reader = BufReader::new(reader);
-
-                    session::run(&mut writer, &mut reader, pool, world, event_bus, entities).await.unwrap_or_else(|e| {
-                        tracing::error!("Error during session from {addr}: {e:?}");
-                    });
-
-                    tracing::info!("Connection from {addr} closed");
-                });
-            },
-            Err(e) => {
-                tracing::error!("Error handling new connection: {e}");
-                continue;
-            }
+    tokio::select! {
+        _ = accept_loop(listener, world, pool, event_bus, entities) => {},
+        _ = shutdown_rx => {
+            tracing::info!("Shutdown signal received, stopping server");
         }
     }
+
+    Ok(())
 }

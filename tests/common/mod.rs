@@ -1,6 +1,9 @@
+#![allow(dead_code)]
+
 use sqlx::{ConnectOptions, PgPool};
 use tokio::net::TcpListener;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::task::JoinHandle;
 use uuid::uuid;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -9,7 +12,6 @@ use tokio::{net::TcpStream, time::sleep};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
 
 use fourthage_mud::run_server;
-
 
 async fn wait_for_port(addr: &str, timeout: Duration) -> std::io::Result<()> {
     let deadline = Instant::now() + timeout;
@@ -71,11 +73,17 @@ impl TestClient {
 }
 
 pub struct TestServer {
+    pool: PgPool,
     addr: SocketAddr,
+    shutdown_tx: Option<tokio::sync::oneshot::Sender<()>>,
+    task: Option<JoinHandle<()>>,
 }
 
 impl TestServer {
     pub async fn start(pool: &PgPool) -> Self {
+        let _ = tracing_subscriber::fmt::try_init();
+
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
         let db_url = pool.connect_options().to_url_lossy().to_string();
 
         let mut data_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -84,15 +92,33 @@ impl TestServer {
 
         let listener = TcpListener::bind("0.0.0.0:0").await.expect("Failed to bind TCP listener");
         let addr = listener.local_addr().expect("Failed to get local address");
+        tracing::info!("Test server listening on {}", addr);
 
-        tokio::spawn(async move {
-            run_server(listener, &db_url, data_path.to_str().unwrap_or_default(), uuid!("00000000-0000-0000-0000-000000000001")).await
+        let task = tokio::spawn(async move {
+            run_server(listener, shutdown_rx, &db_url, data_path.to_str().unwrap_or_default(), uuid!("00000000-0000-0000-0000-000000000001"))
+                .await.expect("Server error.");
         });
 
         wait_for_port(&addr.to_string(), Duration::from_secs(10)).await
             .expect("Server did not start within timeout");
 
-        TestServer { addr }
+        TestServer { pool: pool.clone(), addr, shutdown_tx: Some(shutdown_tx), task: Some(task) }
+    }
+
+    pub async fn stop(mut self) {
+        if let Some(tx) = self.shutdown_tx.take() {
+            let _ = tx.send(());
+        }
+        if let Some(t) = self.task.take() {
+            let _ = t.await;
+        }
+    }
+
+    pub async fn restart(self) -> TestServer {
+        let pool = self.pool.clone();
+        self.stop().await;
+        tracing::info!("Restarting server...");
+        TestServer::start(&pool).await
     }
 
     /// Connect without logging in.
@@ -114,5 +140,13 @@ impl TestServer {
         assert!(response.contains(&format!("Welcome {}", username)));
 
         client
+    }
+}
+
+impl Drop for TestServer {
+    fn drop(&mut self) {
+        if let Some(tx) = self.shutdown_tx.take() {
+            let _ = tx.send(());
+        }
     }
 }
