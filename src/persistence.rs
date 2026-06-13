@@ -20,6 +20,12 @@ pub async fn load_location(entity: &EntityId, pool: &PgPool) -> Result<Option<Lo
     component
 }
 
+/// System for persisting entity components to the database.
+/// Since the system only runs per tick, it is possible that updates may be lost
+/// if the server crashes between a change in the entity registry and the next tick.
+/// 
+/// This risk is acceptable for this project since component updates are not expected
+/// to be frequent.
 pub struct PersistenceSystem;
 
 impl From<DatabaseError> for SystemError {
