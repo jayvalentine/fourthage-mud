@@ -1,15 +1,20 @@
-019ea272-5c42-7fa2-9c82-7fa27e1094fb:
-  alias: item:book:herb_guide
-  name: 'Book: A Guide to Herbs'
-  description: 'A pocket-sized book describing the features and uses of various herbs.'
-  spawn_location: bookshop
+019ec67e-35b8-7372-9c0e-05525e6470cc:
+  alias: item:sword
+  name: Newly-forged Sword
+  description: A longsword, newly forged by the blacksmith.
+  spawn_location: workshop
 019ea163-ba03-70d1-8814-8fd36e687bbb:
   alias: item:crystal_ball
   name: Crystal Ball
-  description: 'An amethyst crystal ball. A cloud of energy swirls within.'
+  description: An amethyst crystal ball. A cloud of energy swirls within.
   spawn_location: inside_seer_hut
+019ea272-5c42-7fa2-9c82-7fa27e1094fb:
+  alias: item:book:herb_guide
+  name: 'Book: A Guide to Herbs'
+  description: A pocket-sized book describing the features and uses of various herbs.
+  spawn_location: bookshop
 019ea28d-85cf-7240-8ba2-7638573d0613:
   alias: item:book:of_orilest
   name: 'Book: Of Orilest'
-  description: 'A leather-bound tome. The cover is decorated with elegant patterns of Orilesti origin.'
+  description: A leather-bound tome. The cover is decorated with elegant patterns of Orilesti origin.
   spawn_location: bookshop

@@ -580,7 +580,11 @@ fn handle_edit(context: &SessionContext, target: EditTarget, field: EditField, c
             };
 
             match field {
-                EditField::Description => Ok(CommandResult::Query("Cannot edit entity description yet.".into())),
+                EditField::Description => {
+                    let description = Description::from(content);
+                    context.entities.update_component(&entity_id, description)?;
+                    Ok(CommandResult::Query(format!("Updated description of '{alias}'").into()))
+                }
                 EditField::Name => {
                     let name = Name::from(content);
                     context.entities.update_component(&entity_id, name)?;
@@ -620,11 +624,16 @@ fn handle_save(context: &SessionContext, target: SaveTarget, path: String) -> Re
                     Some(r) => r,
                     None => return Ok(CommandResult::Query(format!("Invalid room ID: {spawn}").into()))
                 };
+
+                let description = match context.entities.get_component::<Description>(&e)? {
+                    Some(d) => d.to_string(),
+                    None => "No Description".into()
+                };
                     
                 item_data.insert(e, ItemData {
                     alias: alias.clone(),
-                    name: name,
-                    description: "No Description".into(),
+                    name,
+                    description,
                     spawn_location: room.alias().clone()
                 });
             }
