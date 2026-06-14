@@ -41,11 +41,7 @@ impl System for PersistenceSystem {
     }
     
     async fn run(&self, context: &SystemContext) -> Result<(), SystemError> {
-        let locations = context.entities().query::<Location, _, _>(|iter| {
-            Ok(iter
-                .map(|(entity, location)| (entity.clone(), location.clone()))
-                .collect::<Vec<(EntityId, Location)>>())
-        }).map_err(SystemError::EntityRegistry)?;
+        let locations = context.entities().take_dirty();
 
         for (entity, location) in locations {
             persist_location(&entity, &location, context.pool()).await?;

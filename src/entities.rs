@@ -1,5 +1,5 @@
 use core::fmt;
-use std::{collections::{HashMap, HashSet}};
+use std::{any::TypeId, collections::{HashMap, HashSet}};
 use parking_lot::RwLock;
 use fourthage_mud_macros::ComponentStorage;
 
@@ -68,10 +68,12 @@ struct EntityRegistryInternal {
     names: HashMap<EntityId, Name>,
     descriptions: HashMap<EntityId, Description>,
     players: HashMap<EntityId, Player>,
-    items: HashMap<EntityId, Item>
+    items: HashMap<EntityId, Item>,
+
+    dirty: HashMap<TypeId, HashSet<EntityId>>
 }
 
-trait ComponentStorage {
+trait ComponentStorage: 'static {
     fn get<'a>(entities: &'a EntityRegistryInternal, entity: &EntityId) -> Option<&'a Self>
     where Self: Sized;
 
@@ -99,7 +101,8 @@ impl EntityRegistry {
             names: HashMap::new(),
             descriptions: HashMap::new(),
             players: HashMap::new(),
-            items: HashMap::new()
+            items: HashMap::new(),
+            dirty: HashMap::new()
         };
         EntityRegistry {
             internal: RwLock::new(internal)
@@ -170,19 +173,31 @@ impl EntityRegistry {
         Ok(T::get(&internal, e).cloned())
     }
 
+    /// Removes the component of type T from the entity with the given ID.
+    /// If the entity does not have a component of type T, this function does nothing.
+    ///
+    /// Removes any dirty tracking for the component type T for the given entity.
     #[allow(private_bounds)]
     pub fn remove_component<T: ComponentStorage>(&self, e: &EntityId) -> Result<(), EntityRegistryError> {
         let mut internal = self.internal.write();
         Self::validate_entity(&internal, e)?;
         T::remove(&mut internal, e);
+        if let Some(entities) = internal.dirty.get_mut(&TypeId::of::<T>()) {
+            entities.remove(e);
+        }
         Ok(())
     }
 
+    /// Updates the component of type T for the entity with the given ID.
+    /// If the entity does not have a component of type T, this function adds it.
+    ///
+    /// Automatically adds a dirty tracker for this component.
     #[allow(private_bounds)]
     pub fn update_component<T: ComponentStorage>(&self, e: &EntityId, c: T) -> Result<(), EntityRegistryError> {
         let mut internal = self.internal.write();
         Self::validate_entity(&internal, e)?;
         T::update(&mut internal, e, c);
+        internal.dirty.entry(TypeId::of::<T>()).or_default().insert(*e);
 
         Ok(())
     }
@@ -308,6 +323,20 @@ impl EntityRegistry {
         f(&mut iter)
     }
 
+    /// Returns ID/component pairs for all entities with pending changes.
+    /// Clears all dirty flags for that component.
+    #[allow(private_bounds)]
+    pub fn take_dirty<T: ComponentStorage + Clone>(&self) -> Vec<(EntityId, T)> {
+        let mut internal = self.internal.write();
+
+        let dirty_ids = internal.dirty.remove(&TypeId::of::<T>()).unwrap_or_default();
+        let storage = T::storage(&internal);
+
+        dirty_ids.into_iter()
+                 .filter_map(|id| storage.get(&id).map(|c| (id, c.clone())))
+                 .collect()
+    }
+
     pub fn resolve_alias(&self, alias: &Alias) -> Option<EntityId> {
         let internal = self.internal.read();
 
@@ -378,7 +407,7 @@ impl ComponentStorage for Location {
     }
 }
 
-#[derive(Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[derive(ComponentStorage)]
 #[component(field = "names")]
 pub struct Name(String);
@@ -579,5 +608,30 @@ mod tests {
             assert!(iter.next().is_none());
             Ok(())
         }).unwrap();
+    }
+
+    #[test]
+    fn test_take_dirty() {
+        let entities = EntityRegistry::new();
+
+        let e1 = entities.spawn(None, "e1".into()).unwrap();
+        let e2 = entities.spawn(None, "e2".into()).unwrap();
+
+        entities.update_component(&e1, Name::from("name1")).unwrap();
+        entities.update_component(&e2, Name::from("name2")).unwrap();
+
+        let dirty = entities.take_dirty::<Name>();
+        assert_eq!(2, dirty.len());
+        assert!(dirty.contains(&(e1, Name::from("name1"))));
+        assert!(dirty.contains(&(e2, Name::from("name2"))));
+
+        assert_eq!(Some(Name::from("name1")), entities.get_component(&e1).unwrap());
+        assert_eq!(Some(Name::from("name2")), entities.get_component(&e2).unwrap());
+
+        entities.update_component(&e2, Name::from("name2*")).unwrap();
+
+        let dirty = entities.take_dirty::<Name>();
+        assert_eq!(1, dirty.len());
+        assert!(dirty.contains(&(e2, Name::from("name2*"))));
     }
 }
