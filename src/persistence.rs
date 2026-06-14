@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use sqlx::PgPool;
 
-use crate::{db::{self, DatabaseError}, entities::Location, model::ids::EntityId, system::{System, SystemContext, SystemError}};
+use crate::{db::{self, DatabaseError}, entities::{EntityRegistryError, Location}, model::ids::EntityId, session::SessionContext, system::{System, SystemContext, SystemError}};
 
 pub async fn seed_location(entity: &EntityId, component: &Location, pool: &PgPool) -> Result<Location, DatabaseError> {
     tracing::debug!("Location seeded for entity {entity}: {component:?}");
@@ -34,6 +34,12 @@ impl From<DatabaseError> for SystemError {
     }
 }
 
+impl From<EntityRegistryError> for SystemError {
+    fn from(err: EntityRegistryError) -> Self {
+        SystemError::EntityRegistry(err)
+    }
+}
+
 #[async_trait]
 impl System for PersistenceSystem {
     fn name(&self) -> &str {
@@ -45,6 +51,18 @@ impl System for PersistenceSystem {
 
         for (entity, location) in locations {
             persist_location(&entity, &location, context.pool()).await?;
+        }
+
+        Ok(())
+    }
+}
+
+impl PersistenceSystem {
+    pub async fn persist_session(context: &SessionContext) -> Result<(), SystemError> {
+        let entity = &context.player_id;
+
+        if let Some(location) = context.entities.get_component(entity)? {
+            persist_location(entity, &location, &context.pool).await?;
         }
 
         Ok(())

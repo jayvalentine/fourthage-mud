@@ -12,7 +12,7 @@ use crate::model::ids::EntityId;
 use crate::model::world::{World};
 use crate::db::{self, DatabaseError};
 use crate::password::{self, PasswordError};
-use crate::persistence;
+use crate::persistence::{self, PersistenceSystem};
 
 #[derive(Debug)]
 pub enum SessionError {
@@ -183,6 +183,46 @@ async fn handle_input(session_context: &mut SessionContext, input: &str) -> Resu
     Ok(response)
 }
 
+async fn session_loop(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedReadHalf>, session_context: &mut SessionContext) -> Result<(), SessionError> {
+    loop {
+        tokio::select! {
+            line = recv(reader) => {
+                match line {
+                    Ok(Some(input)) => {
+                        let response = handle_input(session_context, &input).await?;
+                        if let Some(s) = response {
+                            send(writer, &s).await?;
+                        }
+                    },
+                    Ok(None) => {
+                        tracing::info!("Player '{}' disconnected", &session_context.player_name()?);
+                        break;
+                    },
+                    Err(e) => return Err(e)
+                }
+            }
+            event = session_context.receiver.recv() => {
+                match event {
+                    Some(e) => {
+                        match e {
+                            GameEvent::Message(s) => send(writer, &s).await?,
+                            GameEvent::SessionEnded => {
+                                tracing::debug!("Entity {:?} received SessionEnded", session_context.player_id);
+                                break;
+                            }
+                        }
+                    },
+                    None => {
+                        tracing::warn!("No senders in event bus");
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Execute the game loop for the given session.
 async fn run_internal(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedReadHalf>, pool: PgPool, world: Arc<World>, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<(), SessionError> {
     send(writer, "Enter your username:").await?;
@@ -226,42 +266,16 @@ async fn run_internal(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedR
     let mut session_context = SessionContext::new(account.id, account.username, account.is_admin, location, world, pool, event_bus, entities)?;
     welcome(writer, &session_context).await?;
 
-    loop {
-        tokio::select! {
-            line = recv(reader) => {
-                match line {
-                    Ok(Some(input)) => {
-                        let response = handle_input(&mut session_context, &input).await?;
-                        if let Some(s) = response {
-                            send(writer, &s).await?;
-                        }
-                    },
-                    Ok(None) => {
-                        tracing::info!("Player '{}' disconnected", &session_context.player_name()?);
-                        break;
-                    },
-                    Err(e) => return Err(e)
-                }
-            }
-            event = session_context.receiver.recv() => {
-                match event {
-                    Some(e) => {
-                        match e {
-                            GameEvent::Message(s) => send(writer, &s).await?,
-                            GameEvent::SessionEnded => {
-                                tracing::debug!("Entity {:?} received SessionEnded", session_context.player_id);
-                                break;
-                            }
-                        }
-                    },
-                    None => {
-                        tracing::warn!("No senders in event bus");
-                    }
-                }
-            }
-        }
+    let result = session_loop(writer, reader, &mut session_context).await;
+
+    if let Err(e) = PersistenceSystem::persist_session(&session_context).await {
+        tracing::error!("Could not persist closed session (ID: {}): {:?}", &session_context.player_id, e);
     }
-    Ok(())
+    if let Err(e) = session_context.entities.despawn(&session_context.player_id) {
+        tracing::error!("Could not despawn player entity (ID: {}): {:?}", &session_context.player_id, e);
+    };
+
+    result
 }
 
 pub async fn run(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedReadHalf>, pool: PgPool, world: Arc<World>, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<(), SessionError> {
