@@ -271,9 +271,6 @@ async fn run_internal(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedR
     if let Err(e) = PersistenceSystem::persist_session(&session_context).await {
         tracing::error!("Could not persist closed session (ID: {}): {:?}", &session_context.player_id, e);
     }
-    if let Err(e) = session_context.entities.despawn(&session_context.player_id) {
-        tracing::error!("Could not despawn player entity (ID: {}): {:?}", &session_context.player_id, e);
-    };
 
     result
 }

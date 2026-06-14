@@ -50,7 +50,9 @@ impl System for PersistenceSystem {
         let locations = context.entities().take_dirty();
 
         for (entity, location) in locations {
-            persist_location(&entity, &location, context.pool()).await?;
+            if let Err(e) = persist_location(&entity, &location, context.pool()).await {
+                tracing::error!("Failed to persist location for entity: {}", &entity);
+            }
         }
 
         Ok(())

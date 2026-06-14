@@ -77,7 +77,7 @@ async fn accept_loop(listener: TcpListener, world: Arc<World>, pool: sqlx::PgPoo
 
 const TICK_RATE: Duration = Duration::from_secs(1);
 
-async fn game_loop(context: Arc<SystemContext>, systems: Vec<Arc<dyn System>>) -> Result<(), AppError> {
+async fn game_loop(context: Arc<SystemContext>, systems: Vec<Arc<dyn System>>) -> ! {
     let mut interval = interval(TICK_RATE);
     interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
@@ -87,9 +87,11 @@ async fn game_loop(context: Arc<SystemContext>, systems: Vec<Arc<dyn System>>) -
         tracing::debug!("Game loop tick...");
         for system in &systems {
             let system_start = Instant::now();
-            system.run(&context).await?;
+            if let Err(e) = system.run(&context).await {
+                tracing::error!("System {} returned with error: {:?}", system.name(), e);
+            }
             let system_elapsed = system_start.elapsed();
-            tracing::debug!("System {:?} completed in {:?}", system.name(), system_elapsed);
+            tracing::debug!("System {} completed in {:?}", system.name(), system_elapsed);
         }
 
         let elapsed = tick_start.elapsed();
