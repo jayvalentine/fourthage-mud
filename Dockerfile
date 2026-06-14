@@ -3,6 +3,7 @@ WORKDIR /app
 
 # Copy dependency files first for better layer caching.
 COPY Cargo.toml Cargo.lock ./
+COPY fourthage-mud-macros ./fourthage-mud-macros
 RUN mkdir src && echo "fn main() {}" > src/main.rs
 RUN cargo build --release
 
@@ -10,6 +11,7 @@ RUN cargo build --release
 ARG SQLX_OFFLINE=true
 ENV SQLX_OFFLINE=$SQLX_OFFLINE
 COPY src ./src
+COPY fourthage-mud-macros ./fourthage-mud-macros
 COPY migrations ./migrations
 COPY .sqlx ./.sqlx
 RUN touch src/main.rs && cargo build --release

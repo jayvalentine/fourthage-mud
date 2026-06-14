@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput, Data, Meta, Lit};
+use syn::{parse_macro_input, DeriveInput, Meta};
 
 /// Derive macro for `ComponentStorage` that generates standard HashMap-based implementations.
 /// 

@@ -8,7 +8,7 @@ use crate::event::{Event, EventTarget, GameEvent};
 use crate::model::world::{DirectionParseError, Room};
 use crate::model::{world::Direction, ids::{EntityId, RoomId, Alias}};
 use crate::session::SessionContext;
-use crate::{data, persistence};
+use crate::data;
 
 pub struct Keywords(pub Vec<String>);
 
@@ -389,8 +389,6 @@ async fn handle_go(context: &mut SessionContext, direction: Direction) -> Result
     let new_position = Location { value: destination_room_id.as_entity().clone() };
     context.entities.update_component(&context.player_id, new_position.clone())
         .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not update position of entity '{:?}'", &context.player_id)))?;
-    persistence::persist_location(&context.player_id, &new_position, &context.pool)
-        .await.map_err(|_| CommandExecutionError::Unrecoverable("Failed to update room ID in database".into()))?;
 
     let description = get_room_description(context, destination_room_id)?;
 
@@ -482,7 +480,6 @@ async fn handle_take(context: &SessionContext, keywords: Keywords) -> Result<Com
     // Update position of target entity.
     let new_location = Location::new(context.player_id.clone());
     context.entities.update_component::<Location>(target, new_location.clone())?;
-    persistence::persist_location(target, &new_location, &context.pool).await?;
 
     let player_name = get_player_name(context)?;
     let player_location = get_current_position(context)?;
@@ -518,7 +515,6 @@ async fn handle_drop(context: &SessionContext, keywords: Keywords) -> Result<Com
     // Update position of target entity.
     let new_location = get_current_position(context)?;
     context.entities.update_component::<Location>(target, new_location.clone())?;
-    persistence::persist_location(target, &new_location, &context.pool).await?;
 
     let player_name = get_player_name(context)?;
     let player_location = get_current_position(context)?;
@@ -772,7 +768,6 @@ async fn handle_spawn(context: &SessionContext, target: SpawnTarget, alias: Alia
     };
 
     let location = Location { value: current_room_id.as_entity() };
-    persistence::seed_location(&entity_id, &location, &context.pool).await?;
     context.entities.update_component(&entity_id, SpawnLocation::from(&location))?;
     context.entities.update_component(&entity_id, location)?;
 

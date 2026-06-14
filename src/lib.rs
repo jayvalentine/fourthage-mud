@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::net::TcpListener;
 use tokio::io::BufReader;
@@ -13,19 +14,30 @@ mod event;
 mod entities;
 mod persistence;
 mod seed;
+mod system;
 
 use model::world::World;
 use event::EventBus;
 use tokio::sync::oneshot::Receiver;
+use tokio::time::{Instant, interval, MissedTickBehavior};
 use uuid::Uuid;
 
 use crate::entities::EntityRegistry;
 use crate::model::ids::RoomId;
+use crate::persistence::PersistenceSystem;
 use crate::seed::{ItemSeeder, Seeder};
+use crate::system::{System, SystemContext, SystemError};
 
 #[derive(Debug)]
 pub enum AppError {
-    InitialisationError
+    InitialisationError,
+    SystemExecutionError(SystemError)
+}
+
+impl From<SystemError> for AppError {
+    fn from(value: SystemError) -> Self {
+        AppError::SystemExecutionError(value)
+    }
 }
 
 /// Helper function for password hashing for external services.
@@ -63,6 +75,34 @@ async fn accept_loop(listener: TcpListener, world: Arc<World>, pool: sqlx::PgPoo
     }
 }
 
+const TICK_RATE: Duration = Duration::from_secs(1);
+
+async fn game_loop(context: Arc<SystemContext>, systems: Vec<Arc<dyn System>>) -> ! {
+    let mut interval = interval(TICK_RATE);
+    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+    loop {
+        interval.tick().await;
+        let tick_start = Instant::now();
+        tracing::debug!("Game loop tick...");
+        for system in &systems {
+            let system_start = Instant::now();
+            if let Err(e) = system.run(&context).await {
+                tracing::error!("System {} returned with error: {:?}", system.name(), e);
+            }
+            let system_elapsed = system_start.elapsed();
+            tracing::debug!("System {} completed in {:?}", system.name(), system_elapsed);
+        }
+
+        let elapsed = tick_start.elapsed();
+        if elapsed > TICK_RATE {
+            tracing::warn!("Game loop tick took longer than expected: {:?}", elapsed);
+        } else {
+            tracing::debug!("Game loop tick done in {:?}.", elapsed);
+        }
+    }
+}
+
 pub async fn run_server(listener: TcpListener, shutdown_rx: Receiver<()>, database_url: &str, data_path: &str, starting_room: Uuid) -> Result<(), AppError> {
     tracing::info!("Starting server...");
 
@@ -92,6 +132,14 @@ pub async fn run_server(listener: TcpListener, shutdown_rx: Receiver<()>, databa
         AppError::InitialisationError
     })?;
 
+    let system_context = Arc::new(SystemContext::new(entities.clone(), world.clone(), pool.clone(), event_bus.clone()));
+
+    let systems = vec![
+        Arc::new(PersistenceSystem) as Arc<dyn System>
+    ];
+
+    let game_loop_handle = tokio::spawn(game_loop(system_context, systems));
+
     tracing::info!("Listening on port {}", listener.local_addr().map(|addr| addr.port()).unwrap_or(0));
 
     tokio::select! {
@@ -100,6 +148,8 @@ pub async fn run_server(listener: TcpListener, shutdown_rx: Receiver<()>, databa
             tracing::info!("Shutdown signal received, stopping server");
         }
     }
+
+    game_loop_handle.abort();
 
     Ok(())
 }

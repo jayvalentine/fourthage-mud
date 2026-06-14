@@ -4,7 +4,6 @@ use parking_lot::{RawRwLock, RwLock, RwLockReadGuard};
 use std::{collections::HashMap, fmt};
 use serde::{Deserialize, Serialize};
 use serde::de::Error;
-use uuid::uuid;
 
 use crate::model::ids::Alias;
 

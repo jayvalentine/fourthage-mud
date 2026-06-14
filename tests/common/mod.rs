@@ -150,13 +150,13 @@ impl TestServer {
         let mut client = self.connect().await;
         
         let response = client.recv().await;
-        assert!(response.contains("username:"));
+        assert!(response.contains("username:"), "response:\n\n{}", response);
 
         let response = client.send_with_response(username).await;
-        assert!(response.contains("password:"));
+        assert!(response.contains("password:"), "response:\n\n{}", response);
 
         let response = client.send_with_response(password).await;
-        assert!(response.contains(&format!("Welcome {}", username)));
+        assert!(response.contains(&format!("Welcome {}", username)), "response:\n\n{}", response);
 
         client
     }
