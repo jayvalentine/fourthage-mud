@@ -604,10 +604,14 @@ fn handle_save(context: &SessionContext, target: SaveTarget, path: String) -> Re
             let mut rooms = HashMap::new();
             for (id, room) in context.rooms.rooms().iter() {
                 let alias = context.entities.get_alias(&id.as_entity())?;
-                let name = context.entities.get_component::<Name>(&id.as_entity())?
-                    .unwrap_or("Unnamed Room".into());
-                let desc = context.entities.get_component::<Description>(&id.as_entity())?
-                    .unwrap_or("No Description".into());
+                let name = match context.entities.get_component::<Name>(&id.as_entity())? {
+                    Some(n) => n,
+                    None => return Ok(CommandResult::Query(format!("Cannot serialize rooms - no name for '{}'", alias).into()))
+                };
+                let desc = match context.entities.get_component::<Description>(&id.as_entity())? {
+                    Some(n) => n,
+                    None => return Ok(CommandResult::Query(format!("Cannot serialize rooms - no description for '{}'", alias).into()))
+                };
 
                 let exits = room.exits().iter()
                     .filter_map(|d| room.get_destination(*d).map(|dest| (*d, *dest)))
@@ -642,7 +646,7 @@ fn handle_save(context: &SessionContext, target: SaveTarget, path: String) -> Re
 
                 let description = match context.entities.get_component::<Description>(&e)? {
                     Some(d) => d.to_string(),
-                    None => "No Description".into()
+                    None => return Ok(CommandResult::Query(format!("Cannot serialize items - missing description for '{}'", alias).into()))
                 };
                     
                 item_data.insert(e, ItemData {
