@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use crate::data::ItemData;
+use crate::data::{ItemData, RoomData};
 use crate::db::DatabaseError;
 use crate::entities::{Description, EntityRegistryError, Item, Location, Name, Player, SpawnLocation};
 use crate::event::{Event, EventTarget, GameEvent};
-use crate::model::world::{DirectionParseError, Room};
-use crate::model::{world::Direction, ids::{EntityId, RoomId, Alias}};
+use crate::model::rooms::{DirectionParseError, RoomGraphNode};
+use crate::model::{rooms::Direction, ids::{EntityId, RoomId, Alias}};
 use crate::session::SessionContext;
 use crate::data;
 
@@ -298,11 +298,17 @@ fn get_current_position(context: &SessionContext) -> Result<Location, CommandExe
 }
 
 fn get_room_description(context: &SessionContext, id: &RoomId) -> Result<String, CommandExecutionError> {
-    let current_room = context.world.get_room(id)
+    let current_room = context.rooms.get_room(id)
         .ok_or(CommandExecutionError::Unrecoverable("Could not retrieve room based on current room ID".into()))?;
 
-    let room_name = current_room.name();
-    let room_desc = current_room.description();
+    let room_name = match context.entities.get_component::<Name>(&id.as_entity())? {
+        Some(n) => n,
+        None => "Unnamed Room".into()
+    };
+    let room_desc = match context.entities.get_component::<Description>(&id.as_entity())? {
+        Some(n) => n,
+        None => "No Description".into()
+    };
     
     let exits: Vec<String> = current_room.exits().into_iter().map(|e| e.to_string()).collect();
     let exits = exits.join(", ");
@@ -378,7 +384,7 @@ fn get_player_name(context: &SessionContext) -> Result<Name, CommandExecutionErr
 async fn handle_go(context: &mut SessionContext, direction: Direction) -> Result<CommandResult, CommandExecutionError> {
     let location = get_current_position(context)?;
     let current_room_id = RoomId::from_entity(location.value);
-    let current_room = context.world.get_room(&current_room_id)
+    let current_room = context.rooms.get_room(&current_room_id)
         .ok_or(CommandExecutionError::Unrecoverable("Could not retrieve room based on current room ID".into()))?;
 
     let destination_room_id = match current_room.get_destination(direction) {
@@ -555,42 +561,31 @@ fn handle_edit(context: &SessionContext, target: EditTarget, field: EditField, c
         return Ok(CommandResult::Unauthorized)
     }
 
-    match target {
+    let (entity_id, alias) = match target {
         EditTarget::Room => {
             let location = get_current_position(context)?;
-            let current_room_id = RoomId::from_entity(location.value);
-            let response = if let Some(room) = context.world.get_room(&current_room_id) {
-                let mut updated = Room::clone(&room);
-                match field {
-                    EditField::Description => { updated.set_description(content); },
-                    EditField::Name => { updated.set_name(content); }
-                }
-                context.world.update_room(current_room_id, updated);
-                CommandResult::Query(QueryResult { response: "Updated room.".into() })
-            } else {
-                CommandResult::Query(QueryResult { response: format!("Cannot update room '{0:?}'", current_room_id) })
-            };
-            Ok(response)
+            (location.value, context.entities.get_alias(&location.value)?)
         },
         EditTarget::Entity(alias) => {
             let alias = Alias::from(alias);
-            let entity_id = match context.entities.resolve_alias(&alias) {
+            let id = match context.entities.resolve_alias(&alias) {
                 Some(e) => e,
                 None => return Ok(CommandResult::Query(format!("Could not resolve alias '{alias}'").into()))
             };
-
-            match field {
-                EditField::Description => {
-                    let description = Description::from(content);
-                    context.entities.update_component(&entity_id, description)?;
-                    Ok(CommandResult::Query(format!("Updated description of '{alias}'").into()))
-                }
-                EditField::Name => {
-                    let name = Name::from(content);
-                    context.entities.update_component(&entity_id, name)?;
-                    Ok(CommandResult::Query(format!("Updated name of '{alias}'").into()))
-                }
-            }
+            (id, alias)
+        }
+    };
+    
+    match field {
+        EditField::Description => {
+            let description = Description::from(content);
+            context.entities.update_component(&entity_id, description)?;
+            Ok(CommandResult::Query(format!("Updated description of '{alias}'").into()))
+        }
+        EditField::Name => {
+            let name = Name::from(content);
+            context.entities.update_component(&entity_id, name)?;
+            Ok(CommandResult::Query(format!("Updated name of '{alias}'").into()))
         }
     }
 }
@@ -606,7 +601,27 @@ fn handle_save(context: &SessionContext, target: SaveTarget, path: String) -> Re
 
     let response = match target {
         SaveTarget::Rooms => {
-            let rooms = context.world.rooms();
+            let mut rooms = HashMap::new();
+            for (id, room) in context.rooms.rooms().iter() {
+                let alias = context.entities.get_alias(&id.as_entity())?;
+                let name = context.entities.get_component::<Name>(&id.as_entity())?
+                    .unwrap_or("Unnamed Room".into());
+                let desc = context.entities.get_component::<Description>(&id.as_entity())?
+                    .unwrap_or("No Description".into());
+
+                let exits = room.exits().iter()
+                    .filter_map(|d| room.get_destination(*d).map(|dest| (*d, *dest)))
+                    .collect();
+
+                let room_data = RoomData {
+                    alias,
+                    name: name.to_string(),
+                    description: desc.to_string(),
+                    exits
+                };
+
+                rooms.insert(*id, room_data);
+            }
             match data::save_rooms(&format!("data/{path}"), &rooms) {
                 Ok(_) => format!("Rooms saved to 'data/{path}'"),
                 Err(e) => format!("Could not save rooms to 'data/{path}': {e:?}")
@@ -620,9 +635,9 @@ fn handle_save(context: &SessionContext, target: SaveTarget, path: String) -> Re
             for (e, (name, spawn)) in items {
                 tracing::debug!("item: {0} ({1})", &e, &name);
                 let alias = context.entities.get_alias(&e)?;
-                let room = match context.world.get_room(&RoomId::from_entity(spawn)) {
-                    Some(r) => r,
-                    None => return Ok(CommandResult::Query(format!("Invalid room ID: {spawn}").into()))
+                let room_alias = match context.entities.get_alias(&spawn) {
+                    Ok(r) => r,
+                    Err(_) => return Ok(CommandResult::Query(format!("Invalid room ID: {spawn}").into()))
                 };
 
                 let description = match context.entities.get_component::<Description>(&e)? {
@@ -634,7 +649,7 @@ fn handle_save(context: &SessionContext, target: SaveTarget, path: String) -> Re
                     alias: alias.clone(),
                     name,
                     description,
-                    spawn_location: room.alias().clone()
+                    spawn_location: room_alias
                 });
             }
 
@@ -655,16 +670,17 @@ fn handle_link(context: &SessionContext, direction: Direction, target: Alias) ->
 
     let location = get_current_position(context)?;
     let current_room_id = RoomId::from_entity(location.value);
-    let current_room = match context.world.get_room(&current_room_id) {
+    let current_room = match context.rooms.get_room(&current_room_id) {
         Some(r) => r,
         None => return Ok(CommandResult::Query(format!("Could not get current room (ID: {0})", current_room_id).into()))
     };
 
-    let other_room_id = match context.world.resolve_alias(&target) {
+    let other_room_id = match context.entities.resolve_alias(&target) {
         Some(r) => r,
         None => return Ok(CommandResult::Query(format!("Unknown room alias: '{target}'").into()))
     };
-    let other_room = match context.world.get_room(&other_room_id) {
+    let other_room_id = RoomId::from_entity(other_room_id);
+    let other_room = match context.rooms.get_room(&other_room_id) {
         Some(r) => r,
         None => return Ok(CommandResult::Query(format!("Could not get room with alias: '{target}' (ID: {other_room_id})").into()))
     };
@@ -678,16 +694,19 @@ fn handle_link(context: &SessionContext, direction: Direction, target: Alias) ->
         return Ok(CommandResult::Query(format!("Destination room already has an exit to the {opposite_direction}").into()))
     };
 
-    let mut current_room = Room::clone(&current_room);
-    let mut other_room = Room::clone(&other_room);
+    let current_room_alias = context.entities.get_alias(&current_room_id.as_entity())?;
+    let other_room_alias = context.entities.get_alias(&other_room_id.as_entity())?;
+
+    let mut current_room = RoomGraphNode::clone(&current_room);
+    let mut other_room = RoomGraphNode::clone(&other_room);
 
     current_room.set_exit(direction, other_room_id.clone());
     other_room.set_exit(opposite_direction, current_room_id);
 
-    let response = format!("Linked '{0}' to '{1}'", current_room.alias(), other_room.alias());
+    let response = format!("Linked '{0}' to '{1}'", current_room_alias, other_room_alias);
 
-    context.world.update_room(current_room_id, current_room);
-    context.world.update_room(other_room_id, other_room);
+    context.rooms.update_room(current_room_id, current_room);
+    context.rooms.update_room(other_room_id, other_room);
 
     Ok(CommandResult::Query(response.into()))
 }
@@ -699,7 +718,7 @@ fn handle_unlink(context: &SessionContext, direction: Direction) -> Result<Comma
 
     let location = get_current_position(context)?;
     let current_room_id = RoomId::from_entity(location.value);
-    let current_room = match context.world.get_room(&current_room_id) {
+    let current_room = match context.rooms.get_room(&current_room_id) {
         Some(r) => r,
         None => return Ok(CommandResult::Query(format!("Could not get current room (ID: {0})", current_room_id).into()))
     };
@@ -712,21 +731,24 @@ fn handle_unlink(context: &SessionContext, direction: Direction) -> Result<Comma
         Some(id) => id,
         None => return Err(CommandExecutionError::Unrecoverable(format!("Could not get destination for {direction} exit of current room.")))
     };
-    let other_room = match context.world.get_room(&other_room_id) {
+    let other_room = match context.rooms.get_room(&other_room_id) {
         Some(r) => r,
         None => return Err(CommandExecutionError::Unrecoverable(format!("Could not get destination room with ID: {other_room_id}")))
     };
 
-    let mut current_room = Room::clone(&current_room);
-    let mut other_room = Room::clone(&other_room);
+    let current_room_alias = context.entities.get_alias(&current_room_id.as_entity())?;
+    let other_room_alias = context.entities.get_alias(&other_room_id.as_entity())?;
+
+    let mut current_room = RoomGraphNode::clone(&current_room);
+    let mut other_room = RoomGraphNode::clone(&other_room);
 
     current_room.remove_exit(&direction);
     other_room.remove_exit(&direction.opposite());
 
-    let response = format!("Removed link between '{0}' and '{1}'", current_room.alias(), other_room.alias());
+    let response = format!("Removed link between '{0}' and '{1}'", current_room_alias, other_room_alias);
 
-    context.world.update_room(current_room_id, current_room);
-    context.world.update_room(other_room_id.clone(), other_room);
+    context.rooms.update_room(current_room_id, current_room);
+    context.rooms.update_room(other_room_id.clone(), other_room);
 
     Ok(CommandResult::Query(response.into()))
 }
@@ -738,7 +760,7 @@ fn handle_create(context: &SessionContext, direction: Direction, target: Alias) 
 
     let location = get_current_position(context)?;
     let current_room_id = RoomId::from_entity(location.value);
-    let current_room = match context.world.get_room(&current_room_id) {
+    let current_room = match context.rooms.get_room(&current_room_id) {
         Some(r) => r,
         None => return Ok(CommandResult::Query(format!("Could not get current room (ID: {0})", current_room_id).into()))
     };
@@ -747,17 +769,18 @@ fn handle_create(context: &SessionContext, direction: Direction, target: Alias) 
         return Ok(CommandResult::Query(format!("Current room already has an exit to the {direction}").into()))
     }
 
-    let mut current_room = Room::clone(&current_room);
-    let other_room_id = RoomId::generate();
-    let mut other_room = Room::new(target, "Unnamed Room".into(), "This room has no description.".into(), HashMap::new());
+    let mut current_room = RoomGraphNode::clone(&current_room);
+    let other_room_id = context.entities.spawn(None, target.clone())?;
+    let other_room_id = RoomId::from_entity(other_room_id);
+    let mut other_room = RoomGraphNode::new(HashMap::new());
 
-    current_room.set_exit(direction, other_room_id.clone());
+    current_room.set_exit(direction, other_room_id);
     other_room.set_exit(direction.opposite(), current_room_id.clone());
 
-    let response = format!("Created room '{0}' to the {1}.", other_room.alias(), direction);
+    let response = format!("Created room '{0}' to the {1}.", target, direction);
 
-    context.world.update_room(current_room_id, current_room);
-    context.world.update_room(other_room_id, other_room);
+    context.rooms.update_room(current_room_id, current_room);
+    context.rooms.update_room(other_room_id, other_room);
 
     Ok(CommandResult::Query(QueryResult { response }))
 }
@@ -800,10 +823,11 @@ fn handle_roominfo(context: &SessionContext) -> Result<CommandResult, CommandExe
 
     let location = get_current_position(context)?;
     let current_room_id = RoomId::from_entity(location.value);
-    let current_room = match context.world.get_room(&current_room_id) {
+    let current_room = match context.rooms.get_room(&current_room_id) {
         Some(r) => r,
         None => return Ok(CommandResult::Query(format!("Could not get current room (ID: {0})", current_room_id).into()))
     };
+    let current_room_alias = context.entities.get_alias(&current_room_id.as_entity())?;
 
     let mut exits: Vec<String> = Vec::new();
     for exit in current_room.exits() {
@@ -811,14 +835,12 @@ fn handle_roominfo(context: &SessionContext) -> Result<CommandResult, CommandExe
             Some(id) => id,
             None => return Err(CommandExecutionError::Unrecoverable(format!("Could not get destination for exit '{exit}' of current room.")))
         };
-        let destination = match context.world.get_room(&destination_id) {
-            Some(r) => r,
-            None => return Err(CommandExecutionError::Unrecoverable(format!("Could not get destination room from ID '{destination_id}'.")))
-        };
-        exits.push(format!("{0}: {1} ({2})", exit, destination.alias(), destination_id));
+        let destination_alias = context.entities.get_alias(&destination_id.as_entity())?;
+
+        exits.push(format!("{0}: {1} ({2})", exit, destination_alias, destination_id));
     }
 
-    let response = format!("{0} ({1})\n\n{2}", current_room.alias(), current_room_id, exits.join("\n"));
+    let response = format!("{0} ({1})\n\n{2}", current_room_alias, current_room_id, exits.join("\n"));
     Ok(CommandResult::Query(response.into()))
 }
 

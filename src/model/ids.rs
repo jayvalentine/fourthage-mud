@@ -40,11 +40,6 @@ impl RoomId {
         RoomId(EntityId(id))
     }
 
-    /// Generate a new unique ID.
-    pub fn generate() -> RoomId {
-        RoomId(EntityId::generate())
-    }
-
     pub fn as_entity(&self) -> EntityId {
         self.0
     }
