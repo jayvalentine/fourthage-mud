@@ -8,6 +8,7 @@ pub enum SeedError {
     DataLoad(DataLoadError),
     EntityRegistry(EntityRegistryError),
     UnknownAlias(Alias),
+    NoData
 }
 
 impl From<DatabaseError> for SeedError {
@@ -44,6 +45,12 @@ impl Seeder for RoomSeeder {
     {
         let rooms = data::load_rooms(data_file)?;
 
+        if rooms.is_empty() {
+            return Err(SeedError::NoData)
+        }
+
+        let mut seeded_count: usize = 0;
+
         for (id, room) in rooms {
             let alias = room.alias;
             
@@ -53,7 +60,12 @@ impl Seeder for RoomSeeder {
 
             let node = RoomGraphNode::new(room.exits);
             room_graph.update_room(RoomId::from_entity(id), node);
+
+            seeded_count += 1;
         }
+
+        tracing::debug!("Seeded {} rooms.", seeded_count);
+        
         Ok(())
     }
 }
@@ -63,6 +75,10 @@ pub struct ItemSeeder;
 impl Seeder for ItemSeeder {
     async fn seed(data_file: &str, pool: &PgPool, _room_graph: &RoomGraph, entities: &EntityRegistry) -> Result<(), SeedError> {
         let items = data::load_items(data_file)?;
+
+        if items.is_empty() {
+            return Err(SeedError::NoData)
+        }
 
         let mut seeded_count: usize = 0;
 
