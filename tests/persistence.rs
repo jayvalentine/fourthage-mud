@@ -5,7 +5,7 @@ use crate::common::{TestServer, create_test_account};
 
 #[sqlx::test(migrations = "./migrations")]
 async fn test_persist_location(pool: PgPool) {
-    create_test_account(&pool, "player1", "password", false).await;
+    create_test_account(&pool, "player1", "password", false).await.expect("player1 account creation failed");
 
     let server = TestServer::start(&pool).await;
 
@@ -27,7 +27,7 @@ async fn test_persist_location(pool: PgPool) {
 
 #[sqlx::test(migrations = "./migrations")]
 async fn test_persist_item(pool: PgPool) {
-    create_test_account(&pool, "player1", "password", false).await;
+    create_test_account(&pool, "player1", "password", false).await.expect("player1 account creation failed");
 
     let server = TestServer::start(&pool).await;
 

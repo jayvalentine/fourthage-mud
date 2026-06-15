@@ -9,7 +9,7 @@ use crate::command::{Command, CommandExecutionError, CommandParseError, CommandR
 use crate::entities::{EntityRegistry, EntityRegistryError, Name, Player, Location};
 use crate::event::{EventBus, EventBusError, EventTargetResolver, GameEvent};
 use crate::model::ids::EntityId;
-use crate::model::world::{World};
+use crate::model::rooms::{RoomGraph};
 use crate::db::{self, DatabaseError};
 use crate::password::{self, PasswordError};
 use crate::persistence::{self, PersistenceSystem};
@@ -70,7 +70,7 @@ impl From<EntityRegistryError> for SessionError {
 pub struct SessionContext {
     pub player_id: EntityId,
     pub is_admin: bool,
-    pub world: Arc<World>,
+    pub rooms: Arc<RoomGraph>,
     pub pool: PgPool,
     pub event_bus: Arc<EventBus>,
     pub entities: Arc<EntityRegistry>,
@@ -78,7 +78,7 @@ pub struct SessionContext {
 }
 
 impl SessionContext {
-    pub fn new(id: EntityId, username: String, is_admin: bool, position: Location, world: Arc<World>, pool: PgPool, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<SessionContext, SessionError> {
+    pub fn new(id: EntityId, username: String, is_admin: bool, position: Location, rooms: Arc<RoomGraph>, pool: PgPool, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<SessionContext, SessionError> {
         tracing::debug!("Session started for player {username} (id: {id:?})");
 
         let id = entities.spawn(Some(id), format!("player:{username}").into())?;
@@ -88,7 +88,7 @@ impl SessionContext {
 
         let receiver = event_bus.register(&id)?;
 
-        Ok(SessionContext { player_id: id, is_admin, world, pool, event_bus, receiver, entities })
+        Ok(SessionContext { player_id: id, is_admin, rooms, pool, event_bus, receiver, entities })
     }
 
     pub fn player_name(&self) -> Result<Name, SessionError> {
@@ -224,7 +224,7 @@ async fn session_loop(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedR
 }
 
 /// Execute the game loop for the given session.
-async fn run_internal(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedReadHalf>, pool: PgPool, world: Arc<World>, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<(), SessionError> {
+async fn run_internal(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedReadHalf>, pool: PgPool, world: Arc<RoomGraph>, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<(), SessionError> {
     send(writer, "Enter your username:").await?;
     let username = match recv(reader).await? {
         Some(s) => s,
@@ -275,7 +275,7 @@ async fn run_internal(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedR
     result
 }
 
-pub async fn run(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedReadHalf>, pool: PgPool, world: Arc<World>, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<(), SessionError> {
+pub async fn run(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedReadHalf>, pool: PgPool, world: Arc<RoomGraph>, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<(), SessionError> {
     let result = run_internal(writer, reader, pool, world, event_bus, entities).await;
     match &result {
         Ok(()) => (),

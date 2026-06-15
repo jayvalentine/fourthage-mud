@@ -1,11 +1,12 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use serde::{Serialize, de::Error};
 use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::model::ids::{Alias, EntityId};
-use crate::model::{ids::RoomId, world::Room};
+use crate::model::ids::RoomId;
+use crate::model::rooms::Direction;
 
 #[derive(Debug)]
 pub enum DataLoadError {
@@ -71,6 +72,26 @@ impl Serialize for RoomId {
     }
 }
 
+impl<'de> Deserialize<'de> for Direction {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>
+    {
+        let s = String::deserialize(deserializer)?;
+        Direction::from_string(&s).map_err(|_| D::Error::custom(format!("Invalid direction: {s}")))
+    }
+}
+
+impl Serialize for Direction {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer
+    {
+        let s = format!("{}", self);
+        String::serialize(&s, serializer)
+    }
+}
+
 impl<'de> Deserialize<'de> for EntityId {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -92,14 +113,22 @@ impl Serialize for EntityId {
     }
 }
 
-pub fn get_rooms(file: &str) -> Result<HashMap<RoomId, Room>, DataLoadError> {
+#[derive(Serialize, Deserialize)]
+pub struct RoomData {
+    pub alias: Alias,
+    pub name: String,
+    pub description: String,
+    pub exits: HashMap<Direction, RoomId>
+}
+
+pub fn load_rooms(file: &str) -> Result<HashMap<RoomId, RoomData>, DataLoadError> {
     let yaml = std::fs::read_to_string(file)?;
-    let yaml: HashMap<RoomId, Room> = serde_yaml::from_str(&yaml)?;
+    let yaml = serde_yaml::from_str(&yaml)?;
 
     Ok(yaml)
 }
 
-pub fn save_rooms(file: &str, rooms: &HashMap<RoomId, Arc<Room>>) -> Result<(), DataWriteError> {
+pub fn save_rooms(file: &str, rooms: &HashMap<RoomId, RoomData>) -> Result<(), DataWriteError> {
     let yaml = serde_yaml::to_string(rooms)?;
     std::fs::write(file, yaml)?;
     Ok(())

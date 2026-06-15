@@ -518,8 +518,8 @@ mod tests {
         let e2 = entities.spawn(None, "e2".into()).unwrap();
         let e3 = entities.spawn(None, "e3".into()).unwrap();
 
-        let room1 = RoomId::generate();
-        let room2 = RoomId::generate();
+        let room1 = RoomId::from_entity(entities.spawn(None, "room1".into()).unwrap());
+        let room2 = RoomId::from_entity(entities.spawn(None, "room2".into()).unwrap());
         let loc1 = Location { value: room1.as_entity() };
         let loc2 = Location { value: room2.as_entity() };
 
@@ -549,7 +549,8 @@ mod tests {
         let e2 = entities.spawn(None, "e2".into()).unwrap();
         let e3 = entities.spawn(None, "e3".into()).unwrap();
 
-        let loc = Location { value: RoomId::generate().as_entity() };
+        let room = RoomId::from_entity(entities.spawn(None, "room".into()).unwrap());
+        let loc = Location { value: room.as_entity() };
         let name = Name::from("Some Name");
 
         // e1 has location and name but not item.
@@ -584,8 +585,8 @@ mod tests {
         let e2 = entities.spawn(None, "e2".into()).unwrap();
         let e3 = entities.spawn(None, "e3".into()).unwrap();
 
-        let room1 = RoomId::generate();
-        let room2 = RoomId::generate();
+        let room1 = RoomId::from_entity(entities.spawn(None, "room1".into()).unwrap());
+        let room2 = RoomId::from_entity(entities.spawn(None, "room2".into()).unwrap());
         let loc1 = Location { value: room1.as_entity() };
         let loc2 = Location { value: room2.as_entity() };
 

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use sqlx::PgPool;
 
-use crate::{db::DatabaseError, entities::{EntityRegistry, EntityRegistryError}, event::EventBus, model::world::World};
+use crate::{db::DatabaseError, entities::{EntityRegistry, EntityRegistryError}, event::EventBus, model::rooms::RoomGraph};
 
 #[derive(Debug)]
 pub enum SystemError {
@@ -13,22 +13,22 @@ pub enum SystemError {
 
 pub struct SystemContext {
     registry: Arc<EntityRegistry>,
-    world: Arc<World>,
+    rooms: Arc<RoomGraph>,
     pool: PgPool,
     event_bus: Arc<EventBus>
 }
 
 impl SystemContext {
-    pub fn new(registry: Arc<EntityRegistry>, world: Arc<World>, pool: PgPool, event_bus: Arc<EventBus>) -> Self {
-        Self { registry, world, pool, event_bus }
+    pub fn new(registry: Arc<EntityRegistry>, rooms: Arc<RoomGraph>, pool: PgPool, event_bus: Arc<EventBus>) -> Self {
+        Self { registry, rooms, pool, event_bus }
     }
 
     pub fn entities(&self) -> &EntityRegistry {
         &self.registry
     }
 
-    pub fn world(&self) -> &World {
-        &self.world
+    pub fn rooms(&self) -> &RoomGraph {
+        &self.rooms
     }
 
     pub fn pool(&self) -> &PgPool {

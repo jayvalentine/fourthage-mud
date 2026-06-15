@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use sqlx::PgPool;
 use tokio::net::TcpListener;
 use tokio::io::BufReader;
 
@@ -16,7 +17,7 @@ mod persistence;
 mod seed;
 mod system;
 
-use model::world::World;
+use model::rooms::RoomGraph;
 use event::EventBus;
 use tokio::sync::oneshot::Receiver;
 use tokio::time::{Instant, interval, MissedTickBehavior};
@@ -25,7 +26,7 @@ use uuid::Uuid;
 use crate::entities::EntityRegistry;
 use crate::model::ids::RoomId;
 use crate::persistence::PersistenceSystem;
-use crate::seed::{ItemSeeder, Seeder};
+use crate::seed::{ItemSeeder, RoomSeeder, Seeder};
 use crate::system::{System, SystemContext, SystemError};
 
 #[derive(Debug)]
@@ -46,7 +47,31 @@ pub fn test_hash_password(password: &str) -> String {
     crate::password::hash_password(password).expect("Failed to hash password")
 }
 
-async fn accept_loop(listener: TcpListener, world: Arc<World>, pool: sqlx::PgPool, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) {
+/// Seed game content from data files.
+/// Dynamic content in the database is not overwritten.
+///
+/// Seeding occurs in a specific order because subsequent steps rely on previously-seeded data:
+///
+/// * Rooms
+/// * Items
+///
+/// If a seeding step fails, the seeding process is aborted and subsequent steps are not run.
+///
+async fn seed(data_path: &str, pool: &PgPool, room_graph: &RoomGraph, entities: &EntityRegistry) -> Result<(), AppError> {
+    RoomSeeder::seed(&format!("{data_path}/rooms.yaml"), pool, room_graph, entities).await.map_err(|e| {
+        tracing::error!("Failed to seed rooms: {e:?}");
+        AppError::InitialisationError
+    })?;
+
+    ItemSeeder::seed(&format!("{data_path}/items.yaml"), pool, room_graph, entities).await.map_err(|e| {
+        tracing::error!("Failed to seed items: {e:?}");
+        AppError::InitialisationError
+    })?;
+
+    Ok(())
+}
+
+async fn accept_loop(listener: TcpListener, world: Arc<RoomGraph>, pool: sqlx::PgPool, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) {
     loop {
         match listener.accept().await {
             Ok((socket, addr)) => {
@@ -118,19 +143,11 @@ pub async fn run_server(listener: TcpListener, shutdown_rx: Receiver<()>, databa
         AppError::InitialisationError
     })?;
 
-    let rooms = data::get_rooms(&format!("{data_path}/rooms.yaml")).map_err(|e| {
-        tracing::error!("Error loading room data: {e:?}");
-        AppError::InitialisationError
-    })?;
-
-    let world = Arc::new(World::new(rooms, RoomId::from_uuid(starting_room)));
+    let world = Arc::new(RoomGraph::new(RoomId::from_uuid(starting_room)));
     let event_bus = Arc::new(EventBus::new());
     let entities = Arc::new(EntityRegistry::new());
 
-    ItemSeeder::seed(&format!("{data_path}/items.yaml"), &pool, &world, &entities).await.map_err(|e| {
-        tracing::error!("Failed to seed items: {e:?}");
-        AppError::InitialisationError
-    })?;
+    seed(data_path, &pool, &world, &entities).await?;
 
     let system_context = Arc::new(SystemContext::new(entities.clone(), world.clone(), pool.clone(), event_bus.clone()));
 

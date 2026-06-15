@@ -51,7 +51,7 @@ impl System for PersistenceSystem {
 
         for (entity, location) in locations {
             if let Err(e) = persist_location(&entity, &location, context.pool()).await {
-                tracing::error!("Failed to persist location for entity: {}", &entity);
+                tracing::error!("Failed to persist location for entity {}: {:?}", &entity, e);
             }
         }
 

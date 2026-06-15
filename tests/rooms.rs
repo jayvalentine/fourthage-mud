@@ -5,7 +5,7 @@ use crate::common::{TestServer, create_test_account};
 
 #[sqlx::test(migrations = "./migrations")]
 async fn test_room_description(pool: PgPool) {
-    create_test_account(&pool, "player1", "password", false).await;
+    create_test_account(&pool, "player1", "password", false).await.expect("player1 account creation failed");
     
     let server = TestServer::start(&pool).await;
     let mut client = server.connect_as("player1", "password").await;

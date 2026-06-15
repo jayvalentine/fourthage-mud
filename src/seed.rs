@@ -1,6 +1,6 @@
 use sqlx::PgPool;
 
-use crate::{data::{self, DataLoadError}, db::DatabaseError, entities::{Description, EntityRegistry, EntityRegistryError, Item, Location, Name, SpawnLocation}, model::{ids::Alias, world::World}, persistence};
+use crate::{data::{self, DataLoadError}, db::DatabaseError, entities::{Description, EntityRegistry, EntityRegistryError, Item, Location, Name, SpawnLocation}, model::{ids::{Alias, RoomId}, rooms::{RoomGraph, RoomGraphNode}}, persistence};
 
 #[derive(Debug)]
 pub enum SeedError {
@@ -8,6 +8,7 @@ pub enum SeedError {
     DataLoad(DataLoadError),
     EntityRegistry(EntityRegistryError),
     UnknownAlias(Alias),
+    NoData
 }
 
 impl From<DatabaseError> for SeedError {
@@ -32,24 +33,60 @@ pub trait Seeder {
     async fn seed(
         data_file: &str,
         pool: &PgPool,
-        world: &World,
+        room_graph: &RoomGraph,
         entities: &EntityRegistry
     ) -> Result<(), SeedError>;
+}
+
+pub struct RoomSeeder;
+
+impl Seeder for RoomSeeder {
+    async fn seed(data_file: &str, _pool: &PgPool, room_graph: &RoomGraph, entities: &EntityRegistry) -> Result<(), SeedError>
+    {
+        let rooms = data::load_rooms(data_file)?;
+
+        if rooms.is_empty() {
+            return Err(SeedError::NoData)
+        }
+
+        let mut seeded_count: usize = 0;
+
+        for (id, room) in rooms {
+            let alias = room.alias;
+            
+            let id = entities.spawn(Some(id.as_entity()), alias.clone())?;
+            entities.update_component(&id, Name::from(room.name))?;
+            entities.update_component(&id, Description::from(room.description))?;
+
+            let node = RoomGraphNode::new(room.exits);
+            room_graph.update_room(RoomId::from_entity(id), node);
+
+            seeded_count += 1;
+        }
+
+        tracing::debug!("Seeded {} rooms.", seeded_count);
+        
+        Ok(())
+    }
 }
 
 pub struct ItemSeeder;
 
 impl Seeder for ItemSeeder {
-    async fn seed(data_file: &str, pool: &PgPool, world: &World, entities: &EntityRegistry) -> Result<(), SeedError> {
+    async fn seed(data_file: &str, pool: &PgPool, _room_graph: &RoomGraph, entities: &EntityRegistry) -> Result<(), SeedError> {
         let items = data::load_items(data_file)?;
+
+        if items.is_empty() {
+            return Err(SeedError::NoData)
+        }
 
         let mut seeded_count: usize = 0;
 
         for (id, item) in items {
-            let room_id = world.resolve_alias(&item.spawn_location)
+            let room_id = entities.resolve_alias(&item.spawn_location)
                 .ok_or(SeedError::UnknownAlias(item.spawn_location.clone()))?;
 
-            let location = Location { value: room_id.as_entity() };
+            let location = Location { value: room_id };
             let location = persistence::seed_location(&id, &location, pool).await?;
 
             let id = entities.spawn(Some(id), item.alias.clone())?;
@@ -57,7 +94,7 @@ impl Seeder for ItemSeeder {
             entities.update_component(&id, Name::from(item.name))?;
             entities.update_component(&id, Description::from(item.description))?;
             entities.update_component(&id, location)?;
-            entities.update_component(&id, SpawnLocation { value: room_id.as_entity() })?;
+            entities.update_component(&id, SpawnLocation { value: room_id })?;
 
             seeded_count += 1;
         }
