@@ -3,7 +3,7 @@ use std::fmt;
 
 use crate::data::{ItemData, RoomData};
 use crate::db::DatabaseError;
-use crate::entities::{Description, EntityRegistryError, Item, Location, Name, Player, SpawnLocation};
+use crate::entities::{Description, EntityRegistryError, Item, Location, Name, Npc, Player, SpawnLocation};
 use crate::event::{Event, EventTarget, GameEvent};
 use crate::model::rooms::{DirectionParseError, RoomGraphNode};
 use crate::model::{rooms::Direction, ids::{EntityId, RoomId, Alias}};
@@ -46,7 +46,8 @@ pub enum Command {
 }
 
 pub enum SpawnTarget {
-    Item
+    Item,
+    Npc
 }
 
 pub enum EditTarget {
@@ -274,6 +275,7 @@ impl Command {
             "spawn" => {
                 let what = match parts.next() {
                     Some("item") => SpawnTarget::Item,
+                    Some("npc") => SpawnTarget::Npc,
                     Some(s) => return Err(CommandParseError::InvalidSyntax(format!("Cannot spawn {s}!"))),
                     None => return Err(CommandParseError::InvalidSyntax("Spawn what?".into()))
                 };
@@ -807,7 +809,7 @@ async fn handle_spawn(context: &SessionContext, target: SpawnTarget, alias: Alia
     context.entities.update_component(&entity_id, SpawnLocation::from(&location))?;
     context.entities.update_component(&entity_id, location)?;
 
-    let name = Name::from("Unnamed Item");
+    let name = Name::from("Unnamed");
     context.entities.update_component(&entity_id, name)?;
 
     // Generate marker component depending on spawn target.
@@ -815,6 +817,10 @@ async fn handle_spawn(context: &SessionContext, target: SpawnTarget, alias: Alia
         SpawnTarget::Item => {
             context.entities.update_component(&entity_id, Item)?;
             Ok(CommandResult::Query(format!("Spawned item '{alias}'").into()))
+        },
+        SpawnTarget::Npc => {
+            context.entities.update_component(&entity_id, Npc)?;
+            Ok(CommandResult::Query(format!("Spawned npc '{alias}'").into()))
         }
     }
 
