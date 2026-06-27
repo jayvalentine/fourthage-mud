@@ -152,3 +152,22 @@ pub fn save_items(file: &str, items: &HashMap<EntityId, ItemData>) -> Result<(),
     std::fs::write(file, yaml)?;
     Ok(())
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct NpcData {
+    pub alias: Alias,
+    pub name: String,
+    pub description: String,
+    pub spawn_location: Alias
+}
+
+pub fn load_npcs(file: &str) -> Result<HashMap<EntityId, NpcData>, DataLoadError> {
+    let yaml = std::fs::read_to_string(file)?;
+    Ok(serde_yaml::from_str(&yaml)?)
+}
+
+pub fn save_npcs(file: &str, items: &HashMap<EntityId, NpcData>) -> Result<(), DataWriteError> {
+    let yaml = serde_yaml::to_string(items)?;
+    std::fs::write(file, yaml)?;
+    Ok(())
+}

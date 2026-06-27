@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use crate::data::{ItemData, RoomData};
+use crate::data::{ItemData, NpcData, RoomData};
 use crate::db::DatabaseError;
 use crate::entities::{Description, EntityRegistryError, Item, Location, Name, Npc, Player, SpawnLocation};
 use crate::event::{Event, EventTarget, GameEvent};
@@ -62,7 +62,8 @@ pub enum EditField {
 
 pub enum SaveTarget {
     Rooms,
-    Items
+    Items,
+    Npcs
 }
 
 pub enum CommandParseError {
@@ -235,6 +236,7 @@ impl Command {
                 let target = match target {
                     "rooms" => SaveTarget::Rooms,
                     "items" => SaveTarget::Items,
+                    "npcs" => SaveTarget::Npcs,
                     s => return Err(CommandParseError::UnknownCommand(format!("Don't know how to save '{s}'!")))
                 };
                 let path = match parts.next() {
@@ -662,6 +664,37 @@ fn handle_save(context: &SessionContext, target: SaveTarget, path: String) -> Re
             match data::save_items(&format!("data/{path}"), &item_data) {
                 Ok(_) => format!("Items saved to 'data/{path}'"),
                 Err(e) => format!("Could not save items to 'data/{path}': {e:?}")
+            }
+        },
+        SaveTarget::Npcs => {
+            let npcs: HashMap<EntityId, (String, EntityId)> = context.entities.query3::<Npc, Name, SpawnLocation, _, _>(|iter| {
+                Ok(iter.map(|(e, (_, name, spawn))| (e.clone(), (name.to_string(), spawn.value))).collect())
+            })?;
+            let mut npc_data = HashMap::new();
+            for (e, (name, spawn)) in npcs {
+                tracing::debug!("npc: {0} ({1})", &e, &name);
+                let alias = context.entities.get_alias(&e)?;
+                let room_alias = match context.entities.get_alias(&spawn) {
+                    Ok(r) => r,
+                    Err(_) => return Ok(CommandResult::Query(format!("Invalid room ID: {spawn}").into()))
+                };
+
+                let description = match context.entities.get_component::<Description>(&e)? {
+                    Some(d) => d.to_string(),
+                    None => return Ok(CommandResult::Query(format!("Cannot serialize NPCs - missing description for '{}'", alias).into()))
+                };
+                    
+                npc_data.insert(e, NpcData {
+                    alias: alias.clone(),
+                    name,
+                    description,
+                    spawn_location: room_alias
+                });
+            }
+
+            match data::save_npcs(&format!("data/{path}"), &npc_data) {
+                Ok(_) => format!("NPCs saved to 'data/{path}'"),
+                Err(e) => format!("Could not save NPCs to 'data/{path}': {e:?}")
             }
         }
     };
