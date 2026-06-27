@@ -845,6 +845,9 @@ async fn handle_spawn(context: &SessionContext, target: SpawnTarget, alias: Alia
     let name = Name::from("Unnamed");
     context.entities.update_component(&entity_id, name)?;
 
+    let desc = Description::from("No description");
+    context.entities.update_component(&entity_id, desc)?;
+
     // Generate marker component depending on spawn target.
     match target {
         SpawnTarget::Item => {
