@@ -1,0 +1,5 @@
+00000000-0000-0000-0000-000000000004:
+  alias: npc:test
+  name: 'Test NPC'
+  description: 'An NPC for testing purposes.'
+  spawn_location: starting_room
