@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use crate::data::{ItemData, NpcData, RoomData};
 use crate::db::DatabaseError;
-use crate::entities::{AiBehavior, Description, EntityRegistryError, Item, Location, Name, Npc, Player, SpawnLocation};
+use crate::entities::{AiBehavior, Description, EntityRegistryError, EventHandler, Item, Location, Name, Npc, Player, SpawnLocation};
 use crate::event::{Event, EventTarget, GameEvent};
 use crate::model::rooms::{DirectionParseError, RoomGraphNode};
 use crate::model::{rooms::Direction, ids::{EntityId, RoomId, Alias}};
@@ -685,13 +685,17 @@ fn handle_save(context: &SessionContext, target: SaveTarget, path: String) -> Re
                 };
 
                 let behavior_template = context.entities.get_component::<AiBehavior>(&e)?.map(|b| b.template);
-                    
+                let event_subs = match context.entities.get_component::<EventHandler>(&e)? {
+                    Some(h) => Some(h.subs().iter().map(|s| s.to_string()).collect()),
+                    None => None
+                };
                 npc_data.insert(e, NpcData {
                     alias: alias.clone(),
                     name,
                     description,
                     spawn_location: room_alias,
-                    behavior_template
+                    behavior_template,
+                    event_subs
                 });
             }
 
@@ -859,6 +863,7 @@ async fn handle_spawn(context: &SessionContext, target: SpawnTarget, alias: Alia
         },
         SpawnTarget::Npc => {
             context.entities.update_component(&entity_id, Npc)?;
+            context.entities.update_component(&entity_id, EventHandler::new(HashSet::new()))?;
             Ok(CommandResult::Query(format!("Spawned npc '{alias}'").into()))
         }
     }

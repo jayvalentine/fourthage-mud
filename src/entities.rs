@@ -1,9 +1,9 @@
 use core::fmt;
-use std::{any::TypeId, collections::{HashMap, HashSet}};
-use parking_lot::RwLock;
+use std::{any::TypeId, collections::{HashMap, HashSet}, hash::Hash, sync::Arc};
+use parking_lot::{Mutex, RwLock};
 use fourthage_mud_macros::ComponentStorage;
 
-use crate::{event::{EventTarget, EventTargetResolver}, model::ids::{Alias, EntityId}};
+use crate::{event::{EventTarget, EventTargetResolver, EventType, GameEvent}, model::ids::{Alias, EntityId}};
 
 struct LocationMap {
     location_by_id: HashMap<EntityId, Location>,
@@ -71,6 +71,7 @@ struct EntityRegistryInternal {
     items: HashMap<EntityId, Item>,
     npcs: HashMap<EntityId, Npc>,
     ai_behaviors: HashMap<EntityId, AiBehavior>,
+    event_handlers: HashMap<EntityId, EventHandler>,
 
     dirty: HashMap<TypeId, HashSet<EntityId>>
 }
@@ -106,6 +107,7 @@ impl EntityRegistry {
             items: HashMap::new(),
             npcs: HashMap::new(),
             ai_behaviors: HashMap::new(),
+            event_handlers: HashMap::new(),
             dirty: HashMap::new()
         };
         EntityRegistry {
@@ -501,6 +503,33 @@ pub struct Npc;
 #[component(field = "ai_behaviors")]
 pub struct AiBehavior {
     pub template: String
+}
+
+#[derive(Clone, ComponentStorage)]
+#[component(field = "event_handlers")]
+pub struct EventHandler {
+    pub subscriptions: HashSet<EventType>,
+    pub received: Arc<Mutex<Vec<GameEvent>>>
+}
+
+impl EventHandler {
+    pub fn new(subs: HashSet<EventType>) -> Self {
+        Self { subscriptions: subs, received: Arc::new(Mutex::new(Vec::new())) }
+    }
+
+    pub fn push(&self, event: GameEvent) {
+        if self.subscriptions.contains(&event.event_type()) {
+            self.received.lock().push(event);
+        }
+    }
+
+    pub fn events(&mut self) -> Vec<GameEvent> {
+        self.received.lock().drain(..).collect()
+    }
+
+    pub fn subs(&self) -> &HashSet<EventType> {
+        &self.subscriptions
+    }
 }
 
 #[cfg(test)]

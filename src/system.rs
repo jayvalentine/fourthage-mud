@@ -44,5 +44,5 @@ impl SystemContext {
 pub trait System: Send + Sync {
     fn name(&self) -> &str;
     
-    async fn run(&self, context: &SystemContext) -> Result<(), SystemError>;
+    async fn run(&mut self, context: &SystemContext) -> Result<(), SystemError>;
 }

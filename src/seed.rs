@@ -1,6 +1,8 @@
+use std::str::FromStr;
+
 use sqlx::PgPool;
 
-use crate::{data::{self, DataLoadError}, db::DatabaseError, entities::{AiBehavior, Description, EntityRegistry, EntityRegistryError, Item, Location, Name, Npc, SpawnLocation}, model::{ids::{Alias, RoomId}, rooms::{RoomGraph, RoomGraphNode}}, persistence};
+use crate::{data::{self, DataLoadError}, db::DatabaseError, entities::{AiBehavior, Description, EntityRegistry, EntityRegistryError, EventHandler, Item, Location, Name, Npc, SpawnLocation}, event::EventType, model::{ids::{Alias, RoomId}, rooms::{RoomGraph, RoomGraphNode}}, persistence};
 
 #[derive(Debug)]
 pub enum SeedError {
@@ -132,6 +134,17 @@ impl Seeder for NpcSeeder {
 
             if let Some(template) = npc.behavior_template {
                 entities.update_component(&id, AiBehavior { template })?;
+            }
+
+            if let Some(subs) = npc.event_subs {
+                let subs = subs.iter().filter_map(|s| match EventType::from_str(s) {
+                    Ok(event_type) => Some(event_type),
+                    Err(_) => {
+                        tracing::warn!("Unknown event type '{}' for NPC '{}'. Ignoring.", s, npc.alias);
+                        None
+                    }
+                }).collect();
+                entities.update_component(&id, EventHandler::new(subs))?;
             }
 
             seeded_count += 1;

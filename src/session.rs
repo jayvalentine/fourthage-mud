@@ -7,7 +7,7 @@ use tokio::sync::mpsc;
 
 use crate::command::{Command, CommandExecutionError, CommandParseError, CommandResult, handle_command};
 use crate::entities::{EntityRegistry, EntityRegistryError, Name, Player, Location};
-use crate::event::{EventBus, EventBusError, EventTargetResolver, GameEvent};
+use crate::event::{EventBus, EventBusError, EventTargetResolver, GameEvent, SessionEventSender};
 use crate::model::ids::EntityId;
 use crate::model::rooms::{RoomGraph};
 use crate::db::{self, DatabaseError};
@@ -50,7 +50,6 @@ impl From<CommandExecutionError> for SessionError {
 impl From<EventBusError> for SessionError {
     fn from(value: EventBusError) -> Self {
         match value {
-            EventBusError::InvalidMutex => SessionError::Internal("Event bus holds invalid mutex".into()),
             EventBusError::CouldNotSend => SessionError::Internal("Event bus failed to send".into())
         }
     }
@@ -86,9 +85,10 @@ impl SessionContext {
         entities.update_component(&id, position)?;
         entities.update_component(&id, Name::from(username))?;
 
-        let receiver = event_bus.register(&id)?;
+        let (tx, rx) = mpsc::channel::<GameEvent>(EventBus::BUFFER_SIZE);
+        event_bus.register(&id, Arc::new(SessionEventSender::new(tx)));
 
-        Ok(SessionContext { player_id: id, is_admin, rooms, pool, event_bus, receiver, entities })
+        Ok(SessionContext { player_id: id, is_admin, rooms, pool, event_bus, receiver: rx, entities })
     }
 
     pub fn player_name(&self) -> Result<Name, SessionError> {

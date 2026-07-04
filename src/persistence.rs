@@ -46,7 +46,7 @@ impl System for PersistenceSystem {
         "PersistenceSystem"
     }
     
-    async fn run(&self, context: &SystemContext) -> Result<(), SystemError> {
+    async fn run(&mut self, context: &SystemContext) -> Result<(), SystemError> {
         let locations = context.entities().take_dirty();
 
         for (entity, location) in locations {

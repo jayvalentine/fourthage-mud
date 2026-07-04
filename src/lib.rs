@@ -20,13 +20,15 @@ mod behavior;
 
 use model::rooms::RoomGraph;
 use event::EventBus;
+use tokio::sync::mpsc;
 use tokio::sync::oneshot::Receiver;
 use tokio::time::{Instant, interval, MissedTickBehavior};
 use uuid::Uuid;
 
 use crate::behavior::{BehaviorRegistry, BehaviorSystem};
-use crate::entities::EntityRegistry;
-use crate::model::ids::RoomId;
+use crate::entities::{EntityRegistry, EventHandler};
+use crate::event::{GameEvent, NpcEventSender};
+use crate::model::ids::{EntityId, RoomId};
 use crate::persistence::PersistenceSystem;
 use crate::seed::{ItemSeeder, NpcSeeder, RoomSeeder, Seeder};
 use crate::system::{System, SystemContext, SystemError};
@@ -110,7 +112,8 @@ async fn accept_loop(listener: TcpListener, world: Arc<RoomGraph>, pool: sqlx::P
 
 const TICK_RATE: Duration = Duration::from_secs(1);
 
-async fn game_loop(context: Arc<SystemContext>, systems: Vec<Arc<dyn System>>) -> ! {
+async fn game_loop(context: Arc<SystemContext>, systems: Vec<Box<dyn System>>) -> ! {
+    let mut systems = systems;
     let mut interval = interval(TICK_RATE);
     interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
@@ -118,7 +121,7 @@ async fn game_loop(context: Arc<SystemContext>, systems: Vec<Arc<dyn System>>) -
         interval.tick().await;
         let tick_start = Instant::now();
         tracing::debug!("Game loop tick...");
-        for system in &systems {
+        for system in systems.iter_mut() {
             let system_start = Instant::now();
             if let Err(e) = system.run(&context).await {
                 tracing::error!("System {} returned with error: {:?}", system.name(), e);
@@ -151,17 +154,27 @@ pub async fn run_server(listener: TcpListener, shutdown_rx: Receiver<()>, databa
         AppError::InitialisationError
     })?;
 
+    let (npc_tx, npc_rx) = mpsc::channel::<(EntityId, GameEvent)>(EventBus::BUFFER_SIZE);
+
     let world = Arc::new(RoomGraph::new(RoomId::from_uuid(starting_room)));
     let event_bus = Arc::new(EventBus::new());
     let entities = Arc::new(EntityRegistry::new());
 
     seed(data_path, &pool, &world, &entities).await?;
 
+    entities.query::<EventHandler, _, _>(|iter| {
+        for (entity, _) in iter {
+            let sender = Arc::new(NpcEventSender::new(*entity, npc_tx.clone()));
+            event_bus.register(&entity, sender);
+        }
+        Ok(())
+    });
+
     let system_context = Arc::new(SystemContext::new(entities.clone(), world.clone(), pool.clone(), event_bus.clone()));
 
     let systems = vec![
-        Arc::new(PersistenceSystem) as Arc<dyn System>,
-        Arc::new(BehaviorSystem::new(BehaviorRegistry::new())) as Arc<dyn System>
+        Box::new(PersistenceSystem) as Box<dyn System>,
+        Box::new(BehaviorSystem::new(BehaviorRegistry::new(), npc_rx)) as Box<dyn System>
     ];
 
     let game_loop_handle = tokio::spawn(game_loop(system_context, systems));

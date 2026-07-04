@@ -1,15 +1,18 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
+use tokio::sync::mpsc::{self, error::TryRecvError};
 
-use crate::{entities::{AiBehavior, Location, Name}, event::{Event, EventTarget, EventTargetResolver, GameEvent}, model::ids::EntityId, system::{System, SystemContext, SystemError}};
+use crate::{entities::{AiBehavior, EventHandler, Location, Name}, event::{Event, EventTarget, EventTargetResolver, GameEvent}, model::ids::EntityId, system::{System, SystemContext, SystemError}};
 
 pub struct BehaviorContext<'a> {
-    entity: &'a EntityId
+    entity: &'a EntityId,
+    events: Vec<GameEvent>
 }
 
 pub enum BehaviorAction {
-    Say(String)
+    Say(String),
+    Emote(String)
 }
 
 #[derive(Debug)]
@@ -24,8 +27,24 @@ pub trait Behavior: Send + Sync {
 pub struct DogBehavior;
 
 impl Behavior for DogBehavior {
-    fn on_tick(&self, _: &BehaviorContext) -> Result<Vec<BehaviorAction>, BehaviorError> {
-        Ok(vec![BehaviorAction::Say("Woof!".to_string())])
+    fn on_tick(&self, ctx: &BehaviorContext) -> Result<Vec<BehaviorAction>, BehaviorError> {
+        let mut actions = Vec::new();
+        for event in &ctx.events {
+            match event {
+                GameEvent::Message(msg) => {
+                    let msg = msg.to_ascii_lowercase();
+                    if msg.contains("woof") || msg.contains("bark") {
+                        actions.push(BehaviorAction::Emote("tilts its head in confusion.".to_string()));
+                    } else if msg.contains("food") || msg.contains("treat") {
+                        actions.push(BehaviorAction::Emote("wags its tail excitedly!".to_string()));
+                    } else {
+                        actions.push(BehaviorAction::Say("Woof!".to_string()));
+                    }
+                },
+                _ => {}
+            }
+        }
+        Ok(actions)
     }
 }
 
@@ -42,12 +61,13 @@ impl BehaviorRegistry {
 }
 
 pub struct BehaviorSystem {
-    registry: BehaviorRegistry
+    registry: BehaviorRegistry,
+    receiver: mpsc::Receiver<(EntityId, GameEvent)>
 }
 
 impl BehaviorSystem {
-    pub fn new(registry: BehaviorRegistry) -> Self {
-        BehaviorSystem { registry }
+    pub fn new(registry: BehaviorRegistry, receiver: mpsc::Receiver<(EntityId, GameEvent)>) -> Self {
+        BehaviorSystem { registry, receiver }
     }
 }
 
@@ -57,15 +77,36 @@ impl System for BehaviorSystem {
         "BehaviorSystem"
     }
 
-    async fn run(&self,context: &SystemContext) -> Result<(), SystemError> {
+    async fn run(&mut self, context: &SystemContext) -> Result<(), SystemError> {
+        loop {
+            match self.receiver.try_recv() {
+                Ok((entity_id, event)) => {
+                    if let Some(handler) = context.entities().get_component::<EventHandler>(&entity_id)? {
+                        handler.push(event.clone());
+                    }
+                }
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    tracing::warn!("NPC event channel disconnected");
+                    break;
+                }
+            }
+        }
+
         let entities_to_process: Vec<(EntityId, Name, Location, AiBehavior)> = context.entities()
                                                                       .query3::<Name, Location, AiBehavior, _, _>(|iter| Ok(iter.map(|(e, (name, loc, ai))| (*e, name.clone(), loc.clone(), ai.clone())).collect()))?;
 
         for (entity, name, loc, ai_behavior) in entities_to_process {
             if let Some(behavior) = self.registry.behaviors.get(&ai_behavior.template) {
-                let behavior_context = BehaviorContext { entity: &entity };
+                let events = match context.entities().get_component::<EventHandler>(&entity)? {
+                    Some(mut h) => h.events(),
+                    None => Vec::new()
+                };
+
+                let behavior_context = BehaviorContext { entity: &entity, events };
                 match behavior.on_tick(&behavior_context) {
                     Ok(actions) => {
+                        let mut events = Vec::new();
                         for action in actions {
                             match action {
                                 BehaviorAction::Say(message) => {
@@ -74,18 +115,30 @@ impl System for BehaviorSystem {
                                         target: EventTarget::LocationExcept(loc.clone(), entity),
                                         event: GameEvent::Message(message)
                                     };
-
-                                    let targets = match context.entities().resolve(&event.target) {
-                                        Ok(targets) => targets,
-                                        Err(e) => {
-                                            tracing::error!("Failed to resolve targets for event {:?}: {:?}", event, e);
-                                            continue;
-                                        }
+                                    events.push(event);
+                                },
+                                BehaviorAction::Emote(emote) => {
+                                    let message = format!("{} {}", name, emote);
+                                    let event = Event {
+                                        target: EventTarget::LocationExcept(loc.clone(), entity),
+                                        event: GameEvent::Message(message)
                                     };
-                                    if let Err(e) = context.event_bus().publish(&event.event, &targets).await {
-                                        tracing::error!("Failed to publish event for entity {}: {:?} ({:?})", entity, event, e);
-                                    }
+                                    events.push(event);
                                 }
+
+                            }
+                        }
+
+                        for event in events {
+                            let targets = match context.entities().resolve(&event.target) {
+                                Ok(targets) => targets,
+                                Err(e) => {
+                                    tracing::error!("Failed to resolve targets for event {:?}: {:?}", event, e);
+                                    continue;
+                                }
+                            };
+                            if let Err(e) = context.event_bus().publish(&event.event, &targets).await {
+                                tracing::error!("Failed to publish event for entity {}: {:?} ({:?})", entity, event, e);
                             }
                         }
                     },

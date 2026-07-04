@@ -1,8 +1,10 @@
-use std::{collections::HashMap, sync::{Mutex, PoisonError}};
+use std::{collections::HashMap, str::FromStr, sync::Arc};
 
+use async_trait::async_trait;
 use tokio::sync::mpsc::{self, error::SendError};
+use parking_lot::Mutex;
 
-use crate::{entities::Location, model::ids::EntityId};
+use crate::{entities::{Location}, model::ids::EntityId};
 
 #[derive(Debug)]
 pub enum EventTarget {
@@ -19,6 +21,42 @@ pub enum GameEvent {
     SessionEnded
 }
 
+impl GameEvent {
+    pub fn event_type(&self) -> EventType {
+        match self {
+            GameEvent::Message(_) => EventType::Message,
+            GameEvent::SessionEnded => EventType::SessionEnded
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum EventType {
+    Message,
+    SessionEnded
+}
+
+impl ToString for EventType {
+    fn to_string(&self) -> String {
+        match self {
+            EventType::Message => "message".to_string(),
+            EventType::SessionEnded => "session_ended".to_string()
+        }
+    }
+}
+
+impl FromStr for EventType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "message" => Ok(EventType::Message),
+            "session_ended" => Ok(EventType::SessionEnded),
+            _ => Err(())
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Event {
     pub target: EventTarget,
@@ -27,14 +65,7 @@ pub struct Event {
 
 #[derive(Debug)]
 pub enum EventBusError {
-    InvalidMutex,
     CouldNotSend
-}
-
-impl<T> From<PoisonError<T>> for EventBusError {
-    fn from(_: PoisonError<T>) -> Self {
-        EventBusError::InvalidMutex
-    }
 }
 
 impl From<SendError<GameEvent>> for EventBusError {
@@ -47,32 +78,68 @@ pub trait EventTargetResolver<T> {
     fn resolve(&self, target: &EventTarget) -> Result<Vec<EntityId>, T>;
 }
 
+#[async_trait]
+pub trait EventSender: Send + Sync {
+    async fn send(&self, event: GameEvent) -> Result<(), SendError<GameEvent>>;
+}
+
+pub struct SessionEventSender {
+    sender: mpsc::Sender<GameEvent>
+}
+
+#[async_trait]
+impl EventSender for SessionEventSender {
+    async fn send(&self, event: GameEvent) -> Result<(), SendError<GameEvent>> {
+        self.sender.send(event).await
+    }
+}
+
+impl SessionEventSender {
+    pub fn new(sender: mpsc::Sender<GameEvent>) -> Self {
+        SessionEventSender { sender }
+    }
+}
+
+pub struct NpcEventSender {
+    entity_id: EntityId,
+    sender: mpsc::Sender<(EntityId, GameEvent)>
+}
+
+#[async_trait]
+impl EventSender for NpcEventSender {
+    async fn send(&self, event: GameEvent) -> Result<(), SendError<GameEvent>> {
+        self.sender.send((self.entity_id.clone(), event)).await.map_err(|e| SendError(e.0 .1))
+    }
+}
+
+impl NpcEventSender {
+    pub fn new(entity_id: EntityId, sender: mpsc::Sender<(EntityId, GameEvent)>) -> Self {
+        NpcEventSender { entity_id, sender }
+    }
+}
+
 pub struct EventBus {
-    subscribers: Mutex<HashMap<EntityId, mpsc::Sender<GameEvent>>>
+    subscribers: Mutex<HashMap<EntityId, Arc<dyn EventSender>>>
 }
 
 impl EventBus {
-    const BUFFER_SIZE: usize = 32;
+    pub const BUFFER_SIZE: usize = 32;
 
     pub fn new() -> EventBus {
         EventBus { subscribers: Mutex::new(HashMap::new()) }
     }
 
-    pub fn register(&self, id: &EntityId) -> Result<mpsc::Receiver<GameEvent>, EventBusError> {
-        let (tx, rx) = mpsc::channel::<GameEvent>(Self::BUFFER_SIZE);
-        self.subscribers.lock()?.insert(id.clone(), tx);
-
+    pub fn register(&self, id: &EntityId, sender: Arc<dyn EventSender>) {
+        self.subscribers.lock().insert(id.clone(), sender);
         tracing::debug!("Entity '{id:?}' registered on event bus");
-        Ok(rx)
     }
 
-    pub fn unregister(&self, id: &EntityId) -> Result<(), EventBusError> {
-        self.subscribers.lock()?.remove(id);
+    pub fn unregister(&self, id: &EntityId) {
+        self.subscribers.lock().remove(id);
         tracing::debug!("Entity '{id:?}' un-registered from event bus");
-        Ok(())
     }
 
-    fn resolve_targets(subscribers: &HashMap<EntityId, mpsc::Sender<GameEvent>>, targets: &[EntityId]) -> Vec<mpsc::Sender<GameEvent>> {
+    fn resolve_targets(subscribers: &HashMap<EntityId, Arc<dyn EventSender>>, targets: &[EntityId]) -> Vec<Arc<dyn EventSender>> {
         let mut senders = Vec::new();
         for target in targets {
             tracing::debug!("Resolved target entity: {:?}", target);
@@ -87,7 +154,7 @@ impl EventBus {
     pub async fn publish(&self, event: &GameEvent, targets: &[EntityId]) -> Result<(), EventBusError> {
         tracing::debug!("Publishing event: {0:?}", event);
         let senders: Vec<_> = {
-            let subscribers = self.subscribers.lock()?;
+            let subscribers = self.subscribers.lock();
             Self::resolve_targets(&subscribers, targets)
         };
 
