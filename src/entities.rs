@@ -70,6 +70,7 @@ struct EntityRegistryInternal {
     players: HashMap<EntityId, Player>,
     items: HashMap<EntityId, Item>,
     npcs: HashMap<EntityId, Npc>,
+    ai_behaviors: HashMap<EntityId, AiBehavior>,
 
     dirty: HashMap<TypeId, HashSet<EntityId>>
 }
@@ -104,6 +105,7 @@ impl EntityRegistry {
             players: HashMap::new(),
             items: HashMap::new(),
             npcs: HashMap::new(),
+            ai_behaviors: HashMap::new(),
             dirty: HashMap::new()
         };
         EntityRegistry {
@@ -493,6 +495,13 @@ impl fmt::Display for Description {
 #[derive(ComponentStorage)]
 #[component(field = "npcs")]
 pub struct Npc;
+
+#[derive(Clone)]
+#[derive(ComponentStorage)]
+#[component(field = "ai_behaviors")]
+pub struct AiBehavior {
+    pub template: String
+}
 
 #[cfg(test)]
 mod tests {

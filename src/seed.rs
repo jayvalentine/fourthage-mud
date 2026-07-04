@@ -1,6 +1,6 @@
 use sqlx::PgPool;
 
-use crate::{data::{self, DataLoadError}, db::DatabaseError, entities::{Description, EntityRegistry, EntityRegistryError, Item, Location, Name, Npc, SpawnLocation}, model::{ids::{Alias, RoomId}, rooms::{RoomGraph, RoomGraphNode}}, persistence};
+use crate::{data::{self, DataLoadError}, db::DatabaseError, entities::{AiBehavior, Description, EntityRegistry, EntityRegistryError, Item, Location, Name, Npc, SpawnLocation}, model::{ids::{Alias, RoomId}, rooms::{RoomGraph, RoomGraphNode}}, persistence};
 
 #[derive(Debug)]
 pub enum SeedError {
@@ -8,7 +8,6 @@ pub enum SeedError {
     DataLoad(DataLoadError),
     EntityRegistry(EntityRegistryError),
     UnknownAlias(Alias),
-    NoData
 }
 
 impl From<DatabaseError> for SeedError {
@@ -46,7 +45,7 @@ impl Seeder for RoomSeeder {
         let rooms = data::load_rooms(data_file)?;
 
         if rooms.is_empty() {
-            return Err(SeedError::NoData)
+            tracing::warn!("No rooms found in data file '{}'.", data_file);
         }
 
         let mut seeded_count: usize = 0;
@@ -77,7 +76,7 @@ impl Seeder for ItemSeeder {
         let items = data::load_items(data_file)?;
 
         if items.is_empty() {
-            return Err(SeedError::NoData)
+            tracing::warn!("No items found in data file '{}'.", data_file);
         }
 
         let mut seeded_count: usize = 0;
@@ -112,7 +111,7 @@ impl Seeder for NpcSeeder {
         let npcs = data::load_npcs(data_file)?;
 
         if npcs.is_empty() {
-            return Err(SeedError::NoData)
+            tracing::warn!("No NPCs found in data file '{}'.", data_file);
         }
 
         let mut seeded_count: usize = 0;
@@ -130,6 +129,10 @@ impl Seeder for NpcSeeder {
             entities.update_component(&id, Description::from(npc.description))?;
             entities.update_component(&id, location)?;
             entities.update_component(&id, SpawnLocation { value: room_id })?;
+
+            if let Some(template) = npc.behavior_template {
+                entities.update_component(&id, AiBehavior { template })?;
+            }
 
             seeded_count += 1;
         }

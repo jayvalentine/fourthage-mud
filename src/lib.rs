@@ -16,6 +16,7 @@ mod entities;
 mod persistence;
 mod seed;
 mod system;
+mod behavior;
 
 use model::rooms::RoomGraph;
 use event::EventBus;
@@ -23,6 +24,7 @@ use tokio::sync::oneshot::Receiver;
 use tokio::time::{Instant, interval, MissedTickBehavior};
 use uuid::Uuid;
 
+use crate::behavior::{BehaviorRegistry, BehaviorSystem};
 use crate::entities::EntityRegistry;
 use crate::model::ids::RoomId;
 use crate::persistence::PersistenceSystem;
@@ -158,7 +160,8 @@ pub async fn run_server(listener: TcpListener, shutdown_rx: Receiver<()>, databa
     let system_context = Arc::new(SystemContext::new(entities.clone(), world.clone(), pool.clone(), event_bus.clone()));
 
     let systems = vec![
-        Arc::new(PersistenceSystem) as Arc<dyn System>
+        Arc::new(PersistenceSystem) as Arc<dyn System>,
+        Arc::new(BehaviorSystem::new(BehaviorRegistry::new())) as Arc<dyn System>
     ];
 
     let game_loop_handle = tokio::spawn(game_loop(system_context, systems));

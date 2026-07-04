@@ -4,6 +4,7 @@ use tokio::sync::mpsc::{self, error::SendError};
 
 use crate::{entities::Location, model::ids::EntityId};
 
+#[derive(Debug)]
 pub enum EventTarget {
     /// The named entity.
     Entity(EntityId),
@@ -18,11 +19,13 @@ pub enum GameEvent {
     SessionEnded
 }
 
+#[derive(Debug)]
 pub struct Event {
     pub target: EventTarget,
     pub event: GameEvent
 }
 
+#[derive(Debug)]
 pub enum EventBusError {
     InvalidMutex,
     CouldNotSend

@@ -3,7 +3,7 @@ use std::fmt;
 
 use crate::data::{ItemData, NpcData, RoomData};
 use crate::db::DatabaseError;
-use crate::entities::{Description, EntityRegistryError, Item, Location, Name, Npc, Player, SpawnLocation};
+use crate::entities::{AiBehavior, Description, EntityRegistryError, Item, Location, Name, Npc, Player, SpawnLocation};
 use crate::event::{Event, EventTarget, GameEvent};
 use crate::model::rooms::{DirectionParseError, RoomGraphNode};
 use crate::model::{rooms::Direction, ids::{EntityId, RoomId, Alias}};
@@ -683,12 +683,15 @@ fn handle_save(context: &SessionContext, target: SaveTarget, path: String) -> Re
                     Some(d) => d.to_string(),
                     None => return Ok(CommandResult::Query(format!("Cannot serialize NPCs - missing description for '{}'", alias).into()))
                 };
+
+                let behavior_template = context.entities.get_component::<AiBehavior>(&e)?.map(|b| b.template);
                     
                 npc_data.insert(e, NpcData {
                     alias: alias.clone(),
                     name,
                     description,
-                    spawn_location: room_alias
+                    spawn_location: room_alias,
+                    behavior_template
                 });
             }
 

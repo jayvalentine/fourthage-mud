@@ -158,7 +158,8 @@ pub struct NpcData {
     pub alias: Alias,
     pub name: String,
     pub description: String,
-    pub spawn_location: Alias
+    pub spawn_location: Alias,
+    pub behavior_template: Option<String>
 }
 
 pub fn load_npcs(file: &str) -> Result<HashMap<EntityId, NpcData>, DataLoadError> {
