@@ -26,7 +26,7 @@ use uuid::Uuid;
 use crate::entities::EntityRegistry;
 use crate::model::ids::RoomId;
 use crate::persistence::PersistenceSystem;
-use crate::seed::{ItemSeeder, RoomSeeder, Seeder};
+use crate::seed::{ItemSeeder, NpcSeeder, RoomSeeder, Seeder};
 use crate::system::{System, SystemContext, SystemError};
 
 #[derive(Debug)]
@@ -54,6 +54,7 @@ pub fn test_hash_password(password: &str) -> String {
 ///
 /// * Rooms
 /// * Items
+/// * NPCs
 ///
 /// If a seeding step fails, the seeding process is aborted and subsequent steps are not run.
 ///
@@ -65,6 +66,11 @@ async fn seed(data_path: &str, pool: &PgPool, room_graph: &RoomGraph, entities: 
 
     ItemSeeder::seed(&format!("{data_path}/items.yaml"), pool, room_graph, entities).await.map_err(|e| {
         tracing::error!("Failed to seed items: {e:?}");
+        AppError::InitialisationError
+    })?;
+
+    NpcSeeder::seed(&format!("{data_path}/npcs.yaml"), pool, room_graph, entities).await.map_err(|e| {
+        tracing::error!("Failed to seed NPCs: {e:?}");
         AppError::InitialisationError
     })?;
 

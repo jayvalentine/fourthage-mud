@@ -1,6 +1,6 @@
 use sqlx::PgPool;
 
-use crate::{data::{self, DataLoadError}, db::DatabaseError, entities::{Description, EntityRegistry, EntityRegistryError, Item, Location, Name, SpawnLocation}, model::{ids::{Alias, RoomId}, rooms::{RoomGraph, RoomGraphNode}}, persistence};
+use crate::{data::{self, DataLoadError}, db::DatabaseError, entities::{Description, EntityRegistry, EntityRegistryError, Item, Location, Name, Npc, SpawnLocation}, model::{ids::{Alias, RoomId}, rooms::{RoomGraph, RoomGraphNode}}, persistence};
 
 #[derive(Debug)]
 pub enum SeedError {
@@ -100,6 +100,41 @@ impl Seeder for ItemSeeder {
         }
 
         tracing::debug!("Seeded {} items.", seeded_count);
+
+        Ok(())
+    }
+}
+
+pub struct NpcSeeder;
+
+impl Seeder for NpcSeeder {
+    async fn seed(data_file: &str, pool: &PgPool, _room_graph: &RoomGraph, entities: &EntityRegistry) -> Result<(), SeedError> {
+        let npcs = data::load_npcs(data_file)?;
+
+        if npcs.is_empty() {
+            return Err(SeedError::NoData)
+        }
+
+        let mut seeded_count: usize = 0;
+
+        for (id, npc) in npcs {
+            let room_id = entities.resolve_alias(&npc.spawn_location)
+                .ok_or(SeedError::UnknownAlias(npc.spawn_location.clone()))?;
+
+            let location = Location { value: room_id };
+            let location = persistence::seed_location(&id, &location, pool).await?;
+
+            let id = entities.spawn(Some(id), npc.alias.clone())?;
+            entities.update_component(&id, Npc)?;
+            entities.update_component(&id, Name::from(npc.name))?;
+            entities.update_component(&id, Description::from(npc.description))?;
+            entities.update_component(&id, location)?;
+            entities.update_component(&id, SpawnLocation { value: room_id })?;
+
+            seeded_count += 1;
+        }
+
+        tracing::debug!("Seeded {} NPCs.", seeded_count);
 
         Ok(())
     }
