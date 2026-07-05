@@ -7,23 +7,12 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mud -d fourthage"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
 
   server:
-    build: .
+    image: ghcr.io/jayvalentine/fourthage-mud:${IMAGE_TAG:-latest}
     environment:
-      DATABASE_URL: postgres://mud:${POSTGRES_PASSWORD}@db:5432/fourthage
-      RUST_LOG: ${RUST_LOG}
-    volumes:
-      - ./data:/app/data
-    ports:
-      - "8080:8080"
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/fourthage
+      RUST_LOG: ${RUST_LOG:-info}
     depends_on:
       db:
         condition: service_healthy

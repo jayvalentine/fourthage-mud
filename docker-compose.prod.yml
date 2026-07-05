@@ -1,0 +1,14 @@
+services:
+  db:
+    ports:
+      - "127.0.0.1:5432:5432" # localhost only on prod
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d fourthage"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  server:
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
