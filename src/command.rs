@@ -411,12 +411,11 @@ fn handle_say(context: &SessionContext, sentence: &str) -> Result<CommandResult,
     let name = get_player_name(context)?;
     let position = get_current_position(context)?;
 
-    let message = format!("{name} says: {sentence}");
     let result = ActionResult {
         events: vec![
             Event {
                 target: EventTarget::LocationExcept(position, context.player_id.clone()),
-                event: GameEvent::Message(message)
+                event: GameEvent::PlayerSaid(name.to_string(), sentence.to_string())
             }
         ],
         response: Some(format!("You say: {sentence}"))

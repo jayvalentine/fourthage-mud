@@ -206,6 +206,7 @@ async fn session_loop(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedR
                     Some(e) => {
                         match e {
                             GameEvent::Message(s) => send(writer, &s).await?,
+                            GameEvent::PlayerSaid(name, msg) => send(writer, &format!("{name} says: {msg}")).await?,
                             GameEvent::SessionEnded => {
                                 tracing::debug!("Entity {:?} received SessionEnded", session_context.player_id);
                                 break;

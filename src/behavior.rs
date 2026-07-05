@@ -31,7 +31,7 @@ impl Behavior for DogBehavior {
         let mut actions = Vec::new();
         for event in &ctx.events {
             match event {
-                GameEvent::Message(msg) => {
+                GameEvent::PlayerSaid(_, msg) => {
                     let msg = msg.to_ascii_lowercase();
                     if msg.contains("woof") || msg.contains("bark") {
                         actions.push(BehaviorAction::Emote("tilts its head in confusion.".to_string()));

@@ -4,4 +4,4 @@
   description: 'An NPC for testing purposes.'
   spawn_location: starting_room
   behavior_template: dog
-  event_subs: [message]
+  event_subs: [player_said]

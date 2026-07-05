@@ -4,4 +4,4 @@
   description: A mangy stray dog.
   spawn_location: room:market_east
   behavior_template: dog
-  event_subs: [message]
+  event_subs: [player_said]
