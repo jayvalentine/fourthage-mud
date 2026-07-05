@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{collections::HashSet, str::FromStr};
 
 use sqlx::PgPool;
 
@@ -10,6 +10,7 @@ pub enum SeedError {
     DataLoad(DataLoadError),
     EntityRegistry(EntityRegistryError),
     UnknownAlias(Alias),
+    DataError(String)
 }
 
 impl From<DatabaseError> for SeedError {
@@ -137,14 +138,18 @@ impl Seeder for NpcSeeder {
             }
 
             if let Some(subs) = npc.event_subs {
-                let subs = subs.iter().filter_map(|s| match EventType::from_str(s) {
-                    Ok(event_type) => Some(event_type),
-                    Err(_) => {
-                        tracing::warn!("Unknown event type '{}' for NPC '{}'. Ignoring.", s, npc.alias);
-                        None
+                let mut subs_parsed = HashSet::new();
+                for sub in subs {
+                    match EventType::from_str(&sub) {
+                        Ok(event_type) => {
+                            subs_parsed.insert(event_type);
+                        },
+                        Err(_) => {
+                            return Err(SeedError::DataError(format!("Unknown event type '{}' for NPC '{}'", sub, npc.alias)));
+                        }
                     }
-                }).collect();
-                entities.update_component(&id, EventHandler::new(subs))?;
+                }
+                entities.update_component(&id, EventHandler::new(subs_parsed))?;
             }
 
             seeded_count += 1;
