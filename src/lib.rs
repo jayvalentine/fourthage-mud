@@ -26,7 +26,7 @@ use tokio::time::{Instant, interval, MissedTickBehavior};
 use uuid::Uuid;
 
 use crate::behavior::{BehaviorRegistry, BehaviorSystem};
-use crate::entities::{EntityRegistry, EventHandler};
+use crate::entities::{EntityRegistry, EventHandler, Npc};
 use crate::event::{GameEvent, NpcEventSender};
 use crate::model::ids::{EntityId, RoomId};
 use crate::persistence::PersistenceSystem;
@@ -162,7 +162,7 @@ pub async fn run_server(listener: TcpListener, shutdown_rx: Receiver<()>, databa
 
     seed(data_path, &pool, &world, &entities).await?;
 
-    entities.query::<EventHandler, _, _>(|iter| {
+    entities.query2::<Npc, EventHandler, _, _>(|iter| {
         for (entity, _) in iter {
             let sender = Arc::new(NpcEventSender::new(*entity, npc_tx.clone()));
             event_bus.register(&entity, sender);
