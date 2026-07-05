@@ -1,6 +1,6 @@
 [package]
 name = "fourthage-mud"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Jay Valentine"]
 edition = "2024"
 license = "MIT"
