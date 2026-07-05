@@ -11,7 +11,7 @@ description = "A MUD server written in Rust."
 
 [dependencies]
 argon2 = "0.5.3"
-fourthage-mud-macros = { path = "./fourthage-mud-macros" }
+fourthage-mud-macros = { path = "./fourthage-mud-macros", version = "0.1.0" }
 async-trait = "0.1.89"
 parking_lot = "0.12.5"
 serde = { version = "1.0.228", features = ["derive"] }
