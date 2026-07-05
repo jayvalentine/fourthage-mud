@@ -1,6 +1,8 @@
+use std::{collections::HashSet, str::FromStr};
+
 use sqlx::PgPool;
 
-use crate::{data::{self, DataLoadError}, db::DatabaseError, entities::{Description, EntityRegistry, EntityRegistryError, Item, Location, Name, Npc, SpawnLocation}, model::{ids::{Alias, RoomId}, rooms::{RoomGraph, RoomGraphNode}}, persistence};
+use crate::{data::{self, DataLoadError}, db::DatabaseError, entities::{AiBehavior, Description, EntityRegistry, EntityRegistryError, EventHandler, Item, Location, Name, Npc, SpawnLocation}, event::EventType, model::{ids::{Alias, RoomId}, rooms::{RoomGraph, RoomGraphNode}}, persistence};
 
 #[derive(Debug)]
 pub enum SeedError {
@@ -8,7 +10,7 @@ pub enum SeedError {
     DataLoad(DataLoadError),
     EntityRegistry(EntityRegistryError),
     UnknownAlias(Alias),
-    NoData
+    DataError(String)
 }
 
 impl From<DatabaseError> for SeedError {
@@ -46,7 +48,7 @@ impl Seeder for RoomSeeder {
         let rooms = data::load_rooms(data_file)?;
 
         if rooms.is_empty() {
-            return Err(SeedError::NoData)
+            tracing::warn!("No rooms found in data file '{}'.", data_file);
         }
 
         let mut seeded_count: usize = 0;
@@ -77,7 +79,7 @@ impl Seeder for ItemSeeder {
         let items = data::load_items(data_file)?;
 
         if items.is_empty() {
-            return Err(SeedError::NoData)
+            tracing::warn!("No items found in data file '{}'.", data_file);
         }
 
         let mut seeded_count: usize = 0;
@@ -112,7 +114,7 @@ impl Seeder for NpcSeeder {
         let npcs = data::load_npcs(data_file)?;
 
         if npcs.is_empty() {
-            return Err(SeedError::NoData)
+            tracing::warn!("No NPCs found in data file '{}'.", data_file);
         }
 
         let mut seeded_count: usize = 0;
@@ -130,6 +132,29 @@ impl Seeder for NpcSeeder {
             entities.update_component(&id, Description::from(npc.description))?;
             entities.update_component(&id, location)?;
             entities.update_component(&id, SpawnLocation { value: room_id })?;
+
+            if npc.event_subs.is_some() && npc.behavior_template.is_none() {
+                return Err(SeedError::DataError(format!("NPC '{}' has event subscriptions but no behavior template", npc.alias)));
+            }
+
+            if let Some(template) = npc.behavior_template {
+                entities.update_component(&id, AiBehavior { template })?;
+            }
+
+            if let Some(subs) = npc.event_subs {
+                let mut subs_parsed = HashSet::new();
+                for sub in subs {
+                    match EventType::from_str(&sub) {
+                        Ok(event_type) => {
+                            subs_parsed.insert(event_type);
+                        },
+                        Err(_) => {
+                            return Err(SeedError::DataError(format!("Unknown event type '{}' for NPC '{}'", sub, npc.alias)));
+                        }
+                    }
+                }
+                entities.update_component(&id, EventHandler::new(subs_parsed))?;
+            }
 
             seeded_count += 1;
         }

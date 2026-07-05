@@ -1,9 +1,9 @@
 use core::fmt;
-use std::{any::TypeId, collections::{HashMap, HashSet}};
-use parking_lot::RwLock;
+use std::{any::TypeId, collections::{HashMap, HashSet}, hash::Hash, sync::Arc};
+use parking_lot::{Mutex, RwLock};
 use fourthage_mud_macros::ComponentStorage;
 
-use crate::{event::{EventTarget, EventTargetResolver}, model::ids::{Alias, EntityId}};
+use crate::{event::{EventTarget, EventTargetResolver, EventType, GameEvent}, model::ids::{Alias, EntityId}};
 
 struct LocationMap {
     location_by_id: HashMap<EntityId, Location>,
@@ -70,6 +70,8 @@ struct EntityRegistryInternal {
     players: HashMap<EntityId, Player>,
     items: HashMap<EntityId, Item>,
     npcs: HashMap<EntityId, Npc>,
+    ai_behaviors: HashMap<EntityId, AiBehavior>,
+    event_handlers: HashMap<EntityId, EventHandler>,
 
     dirty: HashMap<TypeId, HashSet<EntityId>>
 }
@@ -104,6 +106,8 @@ impl EntityRegistry {
             players: HashMap::new(),
             items: HashMap::new(),
             npcs: HashMap::new(),
+            ai_behaviors: HashMap::new(),
+            event_handlers: HashMap::new(),
             dirty: HashMap::new()
         };
         EntityRegistry {
@@ -345,6 +349,31 @@ impl EntityRegistry {
         internal.alias_to_id.get(alias).cloned()
     }
 
+    pub fn push_event(&self, entity: &EntityId, event: GameEvent) -> Result<(), EntityRegistryError> {
+        let mut internal = self.internal.write();
+        Self::validate_entity(&internal, entity)?;
+
+        if let Some(handler) = internal.event_handlers.get_mut(entity) {
+            if handler.subs().contains(&EventType::from(&event)) {
+                tracing::debug!("Pushing event for entity {}: {:?}", entity, event);
+                handler.received.push(event);
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn events(&self, entity: &EntityId) -> Result<Vec<GameEvent>, EntityRegistryError> {
+        let mut internal = self.internal.write();
+        Self::validate_entity(&internal, entity)?;
+
+        if let Some(handler) = internal.event_handlers.get_mut(entity) {
+            Ok(handler.received.drain(..).collect())
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
     /// Helper function to validate if an entity ID is valid.
     fn validate_entity(internal: &EntityRegistryInternal, entity: &EntityId) -> Result<(), EntityRegistryError> {
         if internal.id_to_alias.contains_key(entity) {
@@ -493,6 +522,30 @@ impl fmt::Display for Description {
 #[derive(ComponentStorage)]
 #[component(field = "npcs")]
 pub struct Npc;
+
+#[derive(Clone)]
+#[derive(ComponentStorage)]
+#[component(field = "ai_behaviors")]
+pub struct AiBehavior {
+    pub template: String
+}
+
+#[derive(Clone, ComponentStorage)]
+#[component(field = "event_handlers")]
+pub struct EventHandler {
+    pub subscriptions: HashSet<EventType>,
+    pub received: Vec<GameEvent>
+}
+
+impl EventHandler {
+    pub fn new(subs: HashSet<EventType>) -> Self {
+        Self { subscriptions: subs, received: Vec::new() }
+    }
+
+    pub fn subs(&self) -> &HashSet<EventType> {
+        &self.subscriptions
+    }
+}
 
 #[cfg(test)]
 mod tests {

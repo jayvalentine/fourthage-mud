@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use crate::data::{ItemData, NpcData, RoomData};
 use crate::db::DatabaseError;
-use crate::entities::{Description, EntityRegistryError, Item, Location, Name, Npc, Player, SpawnLocation};
+use crate::entities::{AiBehavior, Description, EntityRegistryError, EventHandler, Item, Location, Name, Npc, Player, SpawnLocation};
 use crate::event::{Event, EventTarget, GameEvent};
 use crate::model::rooms::{DirectionParseError, RoomGraphNode};
 use crate::model::{rooms::Direction, ids::{EntityId, RoomId, Alias}};
@@ -411,12 +411,11 @@ fn handle_say(context: &SessionContext, sentence: &str) -> Result<CommandResult,
     let name = get_player_name(context)?;
     let position = get_current_position(context)?;
 
-    let message = format!("{name} says: {sentence}");
     let result = ActionResult {
         events: vec![
             Event {
                 target: EventTarget::LocationExcept(position, context.player_id.clone()),
-                event: GameEvent::Message(message)
+                event: GameEvent::PlayerSaid(name.to_string(), sentence.to_string())
             }
         ],
         response: Some(format!("You say: {sentence}"))
@@ -683,12 +682,19 @@ fn handle_save(context: &SessionContext, target: SaveTarget, path: String) -> Re
                     Some(d) => d.to_string(),
                     None => return Ok(CommandResult::Query(format!("Cannot serialize NPCs - missing description for '{}'", alias).into()))
                 };
-                    
+
+                let behavior_template = context.entities.get_component::<AiBehavior>(&e)?.map(|b| b.template);
+                let event_subs = match context.entities.get_component::<EventHandler>(&e)? {
+                    Some(h) => Some(h.subs().iter().map(|s| s.to_string()).collect()),
+                    None => None
+                };
                 npc_data.insert(e, NpcData {
                     alias: alias.clone(),
                     name,
                     description,
-                    spawn_location: room_alias
+                    spawn_location: room_alias,
+                    behavior_template,
+                    event_subs
                 });
             }
 
@@ -856,6 +862,7 @@ async fn handle_spawn(context: &SessionContext, target: SpawnTarget, alias: Alia
         },
         SpawnTarget::Npc => {
             context.entities.update_component(&entity_id, Npc)?;
+            context.entities.update_component(&entity_id, EventHandler::new(HashSet::new()))?;
             Ok(CommandResult::Query(format!("Spawned npc '{alias}'").into()))
         }
     }

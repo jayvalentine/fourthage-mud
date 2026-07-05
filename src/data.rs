@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde::{Serialize, de::Error};
 use serde::Deserialize;
@@ -158,7 +158,9 @@ pub struct NpcData {
     pub alias: Alias,
     pub name: String,
     pub description: String,
-    pub spawn_location: Alias
+    pub spawn_location: Alias,
+    pub behavior_template: Option<String>,
+    pub event_subs: Option<HashSet<String>>
 }
 
 pub fn load_npcs(file: &str) -> Result<HashMap<EntityId, NpcData>, DataLoadError> {
