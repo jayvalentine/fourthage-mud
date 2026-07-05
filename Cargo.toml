@@ -3,6 +3,8 @@ name = "fourthage-mud"
 version = "0.1.0"
 authors = ["Jay Valentine"]
 edition = "2024"
+license = "MIT"
+repository = "https://github.com/jayvalentine/fourthage-mud"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
