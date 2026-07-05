@@ -133,6 +133,10 @@ impl Seeder for NpcSeeder {
             entities.update_component(&id, location)?;
             entities.update_component(&id, SpawnLocation { value: room_id })?;
 
+            if npc.event_subs.is_some() && npc.behavior_template.is_none() {
+                return Err(SeedError::DataError(format!("NPC '{}' has event subscriptions but no behavior template", npc.alias)));
+            }
+
             if let Some(template) = npc.behavior_template {
                 entities.update_component(&id, AiBehavior { template })?;
             }
