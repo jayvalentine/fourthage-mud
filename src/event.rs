@@ -20,20 +20,19 @@ pub enum GameEvent {
     Message(String),
     SessionEnded
 }
-
-impl GameEvent {
-    pub fn event_type(&self) -> EventType {
-        match self {
-            GameEvent::Message(_) => EventType::Message,
-            GameEvent::SessionEnded => EventType::SessionEnded
-        }
-    }
-}
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum EventType {
     Message,
     SessionEnded
+}
+
+impl From<&GameEvent> for EventType {
+    fn from(event: &GameEvent) -> Self {
+        match event {
+            GameEvent::Message(_) => EventType::Message,
+            GameEvent::SessionEnded => EventType::SessionEnded
+        }
+    }
 }
 
 impl ToString for EventType {

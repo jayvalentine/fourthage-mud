@@ -81,8 +81,9 @@ impl System for BehaviorSystem {
         loop {
             match self.receiver.try_recv() {
                 Ok((entity_id, event)) => {
-                    if let Some(handler) = context.entities().get_component::<EventHandler>(&entity_id)? {
-                        handler.push(event.clone());
+                    tracing::debug!("Received event for entity {}: {:?}", entity_id, event);
+                    if let Err(e) = context.entities().push_event(&entity_id, event) {
+                        tracing::error!("Failed to push event for entity {}: {:?}", entity_id, e);
                     }
                 }
                 Err(TryRecvError::Empty) => break,
@@ -98,11 +99,9 @@ impl System for BehaviorSystem {
 
         for (entity, name, loc, ai_behavior) in entities_to_process {
             if let Some(behavior) = self.registry.behaviors.get(&ai_behavior.template) {
-                let events = match context.entities().get_component::<EventHandler>(&entity)? {
-                    Some(mut h) => h.events(),
-                    None => Vec::new()
-                };
+                let events = context.entities().events(&entity)?;
 
+                tracing::debug!("Processing behavior for entity {} (events: {:?})", entity, events);
                 let behavior_context = BehaviorContext { entity: &entity, events };
                 match behavior.on_tick(&behavior_context) {
                     Ok(actions) => {

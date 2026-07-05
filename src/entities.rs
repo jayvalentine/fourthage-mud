@@ -349,6 +349,31 @@ impl EntityRegistry {
         internal.alias_to_id.get(alias).cloned()
     }
 
+    pub fn push_event(&self, entity: &EntityId, event: GameEvent) -> Result<(), EntityRegistryError> {
+        let mut internal = self.internal.write();
+        Self::validate_entity(&internal, entity)?;
+
+        if let Some(handler) = internal.event_handlers.get_mut(entity) {
+            if handler.subs().contains(&EventType::from(&event)) {
+                tracing::debug!("Pushing event for entity {}: {:?}", entity, event);
+                handler.received.push(event);
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn events(&self, entity: &EntityId) -> Result<Vec<GameEvent>, EntityRegistryError> {
+        let mut internal = self.internal.write();
+        Self::validate_entity(&internal, entity)?;
+
+        if let Some(handler) = internal.event_handlers.get_mut(entity) {
+            Ok(handler.received.drain(..).collect())
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
     /// Helper function to validate if an entity ID is valid.
     fn validate_entity(internal: &EntityRegistryInternal, entity: &EntityId) -> Result<(), EntityRegistryError> {
         if internal.id_to_alias.contains_key(entity) {
@@ -509,22 +534,12 @@ pub struct AiBehavior {
 #[component(field = "event_handlers")]
 pub struct EventHandler {
     pub subscriptions: HashSet<EventType>,
-    pub received: Arc<Mutex<Vec<GameEvent>>>
+    pub received: Vec<GameEvent>
 }
 
 impl EventHandler {
     pub fn new(subs: HashSet<EventType>) -> Self {
-        Self { subscriptions: subs, received: Arc::new(Mutex::new(Vec::new())) }
-    }
-
-    pub fn push(&self, event: GameEvent) {
-        if self.subscriptions.contains(&event.event_type()) {
-            self.received.lock().push(event);
-        }
-    }
-
-    pub fn events(&mut self) -> Vec<GameEvent> {
-        self.received.lock().drain(..).collect()
+        Self { subscriptions: subs, received: Vec::new() }
     }
 
     pub fn subs(&self) -> &HashSet<EventType> {

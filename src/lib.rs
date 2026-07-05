@@ -168,7 +168,7 @@ pub async fn run_server(listener: TcpListener, shutdown_rx: Receiver<()>, databa
             event_bus.register(&entity, sender);
         }
         Ok(())
-    });
+    }).or(Err(AppError::InitialisationError))?;
 
     let system_context = Arc::new(SystemContext::new(entities.clone(), world.clone(), pool.clone(), event_bus.clone()));
 
