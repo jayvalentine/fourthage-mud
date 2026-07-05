@@ -2,6 +2,9 @@
 name = "fourthage-mud-macros"
 version = "0.1.0"
 edition = "2021"
+description = "Helper macros for Fourthage MUD."
+license = "MIT"
+repository = "https://github.com/jayvalentine/fourthage-mud"
 
 [lib]
 proc-macro = true
