@@ -1,9 +1,10 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
+use parking_lot::Mutex;
 use tokio::sync::mpsc::{self, error::TryRecvError};
 
-use crate::{entities::{AiBehavior, EventHandler, Location, Name}, event::{Event, EventTarget, EventTargetResolver, GameEvent}, model::ids::EntityId, system::{System, SystemContext, SystemError}};
+use crate::{entities::{AiBehavior, Location, Name}, event::{Event, EventTarget, EventTargetResolver, GameEvent}, model::ids::EntityId, script::{ScriptEngine, ScriptError, ScriptEvent, ScriptNpc}, system::{System, SystemContext, SystemError}};
 
 pub struct BehaviorContext<'a> {
     entity: &'a EntityId,
@@ -17,46 +18,65 @@ pub enum BehaviorAction {
 
 #[derive(Debug)]
 pub enum BehaviorError {
+    Script(ScriptError)
+}
 
+impl From<ScriptError> for BehaviorError {
+    fn from(value: ScriptError) -> Self {
+        Self::Script(value)
+    }
 }
 
 pub trait Behavior: Send + Sync {
-    fn on_tick(&self, ctx: &BehaviorContext) -> Result<Vec<BehaviorAction>, BehaviorError>;
+    fn on_tick(&self, ctx: BehaviorContext) -> Result<Vec<BehaviorAction>, BehaviorError>;
 }
 
-pub struct DogBehavior;
+pub struct ScriptBehavior {
+    script: String,
+    engine: Arc<Mutex<ScriptEngine>>
+}
 
-impl Behavior for DogBehavior {
-    fn on_tick(&self, ctx: &BehaviorContext) -> Result<Vec<BehaviorAction>, BehaviorError> {
-        let mut actions = Vec::new();
-        for event in &ctx.events {
-            match event {
-                GameEvent::PlayerSaid(_, msg) => {
-                    let msg = msg.to_ascii_lowercase();
-                    if msg.contains("woof") || msg.contains("bark") {
-                        actions.push(BehaviorAction::Emote("tilts its head in confusion.".to_string()));
-                    } else if msg.contains("food") || msg.contains("treat") {
-                        actions.push(BehaviorAction::Emote("wags its tail excitedly!".to_string()));
-                    } else {
-                        actions.push(BehaviorAction::Say("Woof!".to_string()));
-                    }
-                },
-                _ => {}
-            }
-        }
-        Ok(actions)
+impl Behavior for ScriptBehavior {
+    fn on_tick(&self, ctx: BehaviorContext) -> Result<Vec<BehaviorAction>, BehaviorError> {
+        let npc = Arc::new(ScriptNpc::new());
+
+        let events: Vec<Arc<ScriptEvent>> = ctx.events
+            .into_iter()
+            .map(|e| Arc::new(ScriptEvent::from(e)))
+            .collect();
+
+        self.engine.lock().call::<_, ()>(&self.script, "on_tick", (npc.clone(), events))?;
+
+        Ok(npc.actions())
     }
 }
 
 pub struct BehaviorRegistry {
+    script_engine: Arc<Mutex<ScriptEngine>>,
     behaviors: HashMap<String, Box<dyn Behavior>>
 }
 
 impl BehaviorRegistry {
-    pub fn new() -> Self {
-        let mut behaviors: HashMap<String, Box<dyn Behavior>> = HashMap::new();
-        behaviors.insert("dog".to_string(), Box::new(DogBehavior));
-        BehaviorRegistry { behaviors }
+    pub fn new(script_engine: Arc<Mutex<ScriptEngine>>) -> Self {
+        let behaviors: HashMap<String, Box<dyn Behavior>> = HashMap::new();
+        BehaviorRegistry { script_engine, behaviors }
+    }
+
+    pub fn get<'a>(&'a mut self, template: &str) -> Option<&'a Box<dyn Behavior>> {
+        // If the behavior does not exist in the registry,
+        // it might be a script.
+        // If so, load it and cache for later use.
+        if self.behaviors.get(template).is_none() {
+            match std::fs::exists(template) {
+                Ok(true) => {
+                    let b = ScriptBehavior { script: template.into(), engine: self.script_engine.clone() };
+                    self.behaviors.insert(template.into(), Box::new(b));
+                },
+                _ => return None
+            }
+        }
+
+        self.behaviors.get(template)
     }
 }
 
@@ -98,12 +118,12 @@ impl System for BehaviorSystem {
                                                                       .query3::<Name, Location, AiBehavior, _, _>(|iter| Ok(iter.map(|(e, (name, loc, ai))| (*e, name.clone(), loc.clone(), ai.clone())).collect()))?;
 
         for (entity, name, loc, ai_behavior) in entities_to_process {
-            if let Some(behavior) = self.registry.behaviors.get(&ai_behavior.template) {
+            if let Some(behavior) = self.registry.get(&ai_behavior.template) {
                 let events = context.entities().events(&entity)?;
 
                 tracing::debug!("Processing behavior for entity {} (events: {:?})", entity, events);
                 let behavior_context = BehaviorContext { entity: &entity, events };
-                match behavior.on_tick(&behavior_context) {
+                match behavior.on_tick(behavior_context) {
                     Ok(actions) => {
                         let mut events = Vec::new();
                         for action in actions {

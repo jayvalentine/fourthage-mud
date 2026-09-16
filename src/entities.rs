@@ -1,6 +1,6 @@
 use core::fmt;
-use std::{any::TypeId, collections::{HashMap, HashSet}, hash::Hash, sync::Arc};
-use parking_lot::{Mutex, RwLock};
+use std::{any::TypeId, collections::{HashMap, HashSet}, hash::Hash};
+use parking_lot::RwLock;
 use fourthage_mud_macros::ComponentStorage;
 
 use crate::{event::{EventTarget, EventTargetResolver, EventType, GameEvent}, model::ids::{Alias, EntityId}};

@@ -11,7 +11,11 @@ async fn test_npc_event_response(pool: PgPool) {
 
     let mut client = server.connect_as("player", "password").await;
 
-    let response = client.send_with_response("say hello").await;
-    assert!(response.contains("You say: hello"));
-    assert!(response.contains("Woof!"));
+    let response = client.send_with_response("say test query").await;
+    assert!(response.contains("You say: test query"));
+    assert!(response.contains("test response"));
+
+    let response = client.send_with_response("say other query").await;
+    assert!(response.contains("You say: other query"));
+    assert!(!response.contains("test response"));
 }

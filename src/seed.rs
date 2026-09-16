@@ -1,4 +1,4 @@
-use std::{collections::HashSet, str::FromStr};
+use std::{collections::HashSet, path::Path, str::FromStr};
 
 use sqlx::PgPool;
 
@@ -10,7 +10,8 @@ pub enum SeedError {
     DataLoad(DataLoadError),
     EntityRegistry(EntityRegistryError),
     UnknownAlias(Alias),
-    DataError(String)
+    Data(String),
+    Io(std::io::Error)
 }
 
 impl From<DatabaseError> for SeedError {
@@ -28,6 +29,12 @@ impl From<DataLoadError> for SeedError {
 impl From<EntityRegistryError> for SeedError {
     fn from(value: EntityRegistryError) -> Self {
         SeedError::EntityRegistry(value)
+    }
+}
+
+impl From<std::io::Error> for SeedError {
+    fn from(value: std::io::Error) -> Self {
+        SeedError::Io(value)
     }
 }
 
@@ -111,6 +118,7 @@ pub struct NpcSeeder;
 
 impl Seeder for NpcSeeder {
     async fn seed(data_file: &str, pool: &PgPool, _room_graph: &RoomGraph, entities: &EntityRegistry) -> Result<(), SeedError> {
+        let dir = Path::new(data_file).parent().unwrap();
         let npcs = data::load_npcs(data_file)?;
 
         if npcs.is_empty() {
@@ -134,10 +142,15 @@ impl Seeder for NpcSeeder {
             entities.update_component(&id, SpawnLocation { value: room_id })?;
 
             if npc.event_subs.is_some() && npc.behavior_template.is_none() {
-                return Err(SeedError::DataError(format!("NPC '{}' has event subscriptions but no behavior template", npc.alias)));
+                return Err(SeedError::Data(format!("NPC '{}' has event subscriptions but no behavior template", npc.alias)));
             }
 
-            if let Some(template) = npc.behavior_template {
+            if let Some(template) = &npc.behavior_template {
+                let template = if std::fs::exists(dir.join(template))? {
+                    dir.join(template).to_string_lossy().to_string()
+                } else {
+                    template.into()
+                };
                 entities.update_component(&id, AiBehavior { template })?;
             }
 
@@ -149,7 +162,7 @@ impl Seeder for NpcSeeder {
                             subs_parsed.insert(event_type);
                         },
                         Err(_) => {
-                            return Err(SeedError::DataError(format!("Unknown event type '{}' for NPC '{}'", sub, npc.alias)));
+                            return Err(SeedError::Data(format!("Unknown event type '{}' for NPC '{}'", sub, npc.alias)));
                         }
                     }
                 }
