@@ -1,5 +1,6 @@
+use std::collections::HashMap;
 use std::io;
-use mlua::{FromLuaMulti, Function, IntoLuaMulti, Lua, UserData};
+use mlua::{FromLuaMulti, Function, IntoLuaMulti, Lua, RegistryKey, UserData};
 use parking_lot::Mutex;
 
 use crate::behavior::BehaviorAction;
@@ -25,7 +26,8 @@ impl From<io::Error> for ScriptError {
 }
 
 pub struct ScriptEngine {
-    lua: Lua
+    lua: Lua,
+    cache: HashMap<String, HashMap<String, RegistryKey>>
 }
 
 impl ScriptEngine {
@@ -42,7 +44,9 @@ impl ScriptEngine {
         let lua = Lua::new();
         Self::register_globals(&lua)?;
 
-        Ok(ScriptEngine { lua })
+        let cache = HashMap::new();
+
+        Ok(ScriptEngine { lua, cache })
     }
 
     /// Load a function from a Lua script.
@@ -67,7 +71,20 @@ impl ScriptEngine {
             A: IntoLuaMulti<'lua>,
             R: FromLuaMulti<'lua>
     {
-        let func = Self::load_function(path, function_name, &self.lua)?;
+        if !self.cache.contains_key(path) {
+            self.cache.insert(path.into(), HashMap::new());
+        }
+
+        let script = self.cache.get_mut(path).expect("Entry was just added; it must exist.");
+        if !script.contains_key(function_name) {
+            let function = Self::load_function(path, function_name, &self.lua)?;
+            let key = self.lua.create_registry_value(function)?;
+            script.insert(function_name.into(), key);
+        }
+
+        let key = script.get(function_name).expect("Entry was just added; it must exist.");
+
+        let func: Function = self.lua.registry_value(key)?;
         func.call::<A, R>(args).map_err(ScriptError::from)
     }
 }
