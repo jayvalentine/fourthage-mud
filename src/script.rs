@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::io;
-use mlua::{FromLuaMulti, Function, IntoLuaMulti, Lua, RegistryKey, UserData};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
+use mlua::{FromLuaMulti, Function, IntoLuaMulti, Lua, LuaOptions, RegistryKey, StdLib, UserData};
 use parking_lot::Mutex;
 
 use crate::behavior::BehaviorAction;
@@ -27,10 +29,13 @@ impl From<io::Error> for ScriptError {
 
 pub struct ScriptEngine {
     lua: Lua,
-    cache: HashMap<String, HashMap<String, RegistryKey>>
+    cache: HashMap<String, HashMap<String, RegistryKey>>,
+    instruction_count: Arc<AtomicU32>
 }
 
 impl ScriptEngine {
+    const LUA_INSTRUCTION_LIMIT: u32 = 100_000;
+
     fn register_globals(lua: &Lua) -> Result<(), ScriptError> {
         let log = lua.create_function(|_, msg: String| {
             tracing::debug!("[script] {msg}");
@@ -40,13 +45,35 @@ impl ScriptEngine {
         Ok(())
     }
 
+    fn register_instruction_limit(lua: &Lua, instruction_count: Arc<AtomicU32>) {
+        lua.set_hook(
+            mlua::HookTriggers::every_nth_instruction(mlua::HookTriggers::new(), Self::LUA_INSTRUCTION_LIMIT/100),
+            move |_lua, _debug| {
+                let current = instruction_count.fetch_add(1, Ordering::Relaxed);
+                if current > (Self::LUA_INSTRUCTION_LIMIT/1000) {
+                    Err(mlua::Error::RuntimeError(
+                        "script exceeded instruction limit".into()
+                    ))
+                } else {
+                    Ok(())
+                }
+            }
+        );
+    }
+
     pub fn new() -> Result<Self, ScriptError> {
-        let lua = Lua::new();
+        let lua = Lua::new_with(
+            StdLib::TABLE | StdLib::STRING | StdLib::MATH,
+            LuaOptions::default()
+        )?;
         Self::register_globals(&lua)?;
+
+        let instruction_count = Arc::new(AtomicU32::new(0));
+        Self::register_instruction_limit(&lua, instruction_count.clone());
 
         let cache = HashMap::new();
 
-        Ok(ScriptEngine { lua, cache })
+        Ok(ScriptEngine { lua, cache, instruction_count })
     }
 
     /// Load a function from a Lua script.
@@ -85,6 +112,8 @@ impl ScriptEngine {
         let key = script.get(function_name).expect("Entry was just added; it must exist.");
 
         let func: Function = self.lua.registry_value(key)?;
+
+        self.instruction_count.store(0, Ordering::Relaxed);
         func.call::<A, R>(args).map_err(ScriptError::from)
     }
 }
