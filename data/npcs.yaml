@@ -3,5 +3,5 @@
   name: Stray Dog
   description: A mangy stray dog.
   spawn_location: room:market_east
-  behavior_template: dog
+  behavior_template: scripts/dog.lua
   event_subs: [player_said]

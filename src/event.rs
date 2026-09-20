@@ -18,6 +18,8 @@ pub enum EventTarget {
 #[derive(Clone, Debug)]
 pub enum GameEvent {
     Message(String),
+    
+    /// name, message
     PlayerSaid(String, String),
     SessionEnded
 }

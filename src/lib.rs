@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use parking_lot::Mutex;
 use sqlx::PgPool;
 use tokio::net::TcpListener;
 use tokio::io::BufReader;
@@ -17,6 +18,7 @@ mod persistence;
 mod seed;
 mod system;
 mod behavior;
+mod script;
 
 use model::rooms::RoomGraph;
 use event::EventBus;
@@ -30,12 +32,13 @@ use crate::entities::{EntityRegistry, EventHandler, Npc};
 use crate::event::{GameEvent, NpcEventSender};
 use crate::model::ids::{EntityId, RoomId};
 use crate::persistence::PersistenceSystem;
+use crate::script::ScriptEngine;
 use crate::seed::{ItemSeeder, NpcSeeder, RoomSeeder, Seeder};
 use crate::system::{System, SystemContext, SystemError};
 
 #[derive(Debug)]
 pub enum AppError {
-    InitialisationError,
+    InitialisationError(String),
     SystemExecutionError(SystemError)
 }
 
@@ -64,18 +67,15 @@ pub fn test_hash_password(password: &str) -> String {
 ///
 async fn seed(data_path: &str, pool: &PgPool, room_graph: &RoomGraph, entities: &EntityRegistry) -> Result<(), AppError> {
     RoomSeeder::seed(&format!("{data_path}/rooms.yaml"), pool, room_graph, entities).await.map_err(|e| {
-        tracing::error!("Failed to seed rooms: {e:?}");
-        AppError::InitialisationError
+        AppError::InitialisationError(format!("Failed to seed rooms: {e:?}"))
     })?;
 
     ItemSeeder::seed(&format!("{data_path}/items.yaml"), pool, room_graph, entities).await.map_err(|e| {
-        tracing::error!("Failed to seed items: {e:?}");
-        AppError::InitialisationError
+        AppError::InitialisationError(format!("Failed to seed items: {e:?}"))
     })?;
 
     NpcSeeder::seed(&format!("{data_path}/npcs.yaml"), pool, room_graph, entities).await.map_err(|e| {
-        tracing::error!("Failed to seed NPCs: {e:?}");
-        AppError::InitialisationError
+        AppError::InitialisationError(format!("Failed to seed NPCs: {e:?}"))
     })?;
 
     Ok(())
@@ -146,12 +146,10 @@ pub async fn run_server(listener: TcpListener, shutdown_rx: Receiver<()>, databa
     let pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(5)
         .connect(&database_url).await.map_err(|e| {
-            tracing::error!("Failed to connect to database: {e}");
-            AppError::InitialisationError
+            AppError::InitialisationError(format!("Failed to connect to database: {e}"))
         })?;
     sqlx::migrate!().run(&pool).await.map_err(|e| {
-        tracing::error!("Failed to run database migrations: {e}");
-        AppError::InitialisationError
+        AppError::InitialisationError(format!("Failed to run database migrations: {e}"))
     })?;
 
     let (npc_tx, npc_rx) = mpsc::channel::<(EntityId, GameEvent)>(EventBus::BUFFER_SIZE);
@@ -168,13 +166,16 @@ pub async fn run_server(listener: TcpListener, shutdown_rx: Receiver<()>, databa
             event_bus.register(&entity, sender);
         }
         Ok(())
-    }).or(Err(AppError::InitialisationError))?;
+    }).or(Err(AppError::InitialisationError("Failed to register entities".into())))?;
 
     let system_context = Arc::new(SystemContext::new(entities.clone(), world.clone(), pool.clone(), event_bus.clone()));
 
+    let script_engine = ScriptEngine::new().map_err(|e| AppError::InitialisationError(format!("Failed to initialise script engine: {:?}", e)))?;
+    let script_engine = Arc::new(Mutex::new(script_engine));
+
     let systems = vec![
         Box::new(PersistenceSystem) as Box<dyn System>,
-        Box::new(BehaviorSystem::new(BehaviorRegistry::new(), npc_rx)) as Box<dyn System>
+        Box::new(BehaviorSystem::new(BehaviorRegistry::new(script_engine), npc_rx)) as Box<dyn System>
     ];
 
     let game_loop_handle = tokio::spawn(game_loop(system_context, systems));
