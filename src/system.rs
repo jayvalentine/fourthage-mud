@@ -23,7 +23,7 @@ impl SystemContext {
         Self { registry, rooms, pool, event_bus }
     }
 
-    pub fn entities(&self) -> &EntityRegistry {
+    pub fn entities(&self) -> &Arc<EntityRegistry> {
         &self.registry
     }
 

@@ -71,6 +71,7 @@ struct EntityRegistryInternal {
     items: HashMap<EntityId, Item>,
     npcs: HashMap<EntityId, Npc>,
     ai_behaviors: HashMap<EntityId, AiBehavior>,
+    ai_memories: HashMap<EntityId, AiMemory>,
     event_handlers: HashMap<EntityId, EventHandler>,
 
     dirty: HashMap<TypeId, HashSet<EntityId>>
@@ -107,6 +108,7 @@ impl EntityRegistry {
             items: HashMap::new(),
             npcs: HashMap::new(),
             ai_behaviors: HashMap::new(),
+            ai_memories: HashMap::new(),
             event_handlers: HashMap::new(),
             dirty: HashMap::new()
         };
@@ -544,6 +546,64 @@ impl EventHandler {
 
     pub fn subs(&self) -> &HashSet<EventType> {
         &self.subscriptions
+    }
+}
+
+#[derive(Clone, ComponentStorage)]
+#[component(field = "ai_memories")]
+pub struct AiMemory {
+    values: HashMap<String, AiMemoryValue>
+}
+
+#[derive(Clone, Debug)]
+pub enum AiMemoryValue {
+    Integer(i64),
+    String(String)
+}
+
+impl From<AiMemoryValue> for Option<String> {
+    fn from(value: AiMemoryValue) -> Self {
+        match value {
+            AiMemoryValue::String(s) => Some(s.to_string()),
+            _ => None
+        }
+    }
+}
+
+impl From<String> for AiMemoryValue {
+    fn from(value: String) -> Self {
+        AiMemoryValue::String(value)
+    }
+}
+
+impl From<AiMemoryValue> for Option<i64> {
+    fn from(value: AiMemoryValue) -> Self {
+        match value {
+            AiMemoryValue::Integer(i) => Some(i),
+            _ => None
+        }
+    }
+}
+
+impl From<i64> for AiMemoryValue {
+    fn from(value: i64) -> Self {
+        AiMemoryValue::Integer(value)
+    }
+}
+
+impl AiMemory {
+    pub fn new() -> AiMemory {
+        AiMemory {
+            values: HashMap::new()
+        }
+    }
+
+    pub fn get(&self, key: &str) -> Option<&AiMemoryValue> {
+        self.values.get(key)
+    }
+
+    pub fn insert(&mut self, key: String, value: AiMemoryValue) {
+        self.values.insert(key, value);
     }
 }
 
