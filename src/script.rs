@@ -2,11 +2,14 @@ use std::collections::HashMap;
 use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
+use mlua::Error::RuntimeError;
 use mlua::{FromLuaMulti, Function, IntoLuaMulti, Lua, LuaOptions, RegistryKey, StdLib, UserData};
 use parking_lot::Mutex;
 
 use crate::behavior::BehaviorAction;
+use crate::entities::{AiMemory, AiMemoryValue, EntityRegistry, EntityRegistryError};
 use crate::event::{EventType, GameEvent};
+use crate::model::ids::EntityId;
 
 #[derive(Debug)]
 pub enum ScriptError {
@@ -119,17 +122,63 @@ impl ScriptEngine {
 }
 
 pub struct ScriptNpc {
+    entity: EntityId,
+    entity_registry: Arc<EntityRegistry>,
     actions: Mutex<Vec<BehaviorAction>>
 }
 
 impl ScriptNpc {
-    pub fn new() -> ScriptNpc {
-        ScriptNpc { actions: Mutex::new(Vec::new()) }
+    pub fn new(entity: EntityId, entity_registry: Arc<EntityRegistry>) -> ScriptNpc {
+        ScriptNpc {
+            entity,
+            entity_registry,
+            actions: Mutex::new(Vec::new())
+        }
     }
 
     pub fn actions(&self) -> Vec<BehaviorAction> {
         let mut actions = self.actions.lock();
         actions.drain(0..).collect()
+    }
+
+    /// Return the value in memory with given key and type.
+    ///
+    /// Returns default if no value exists with that key.
+    /// Returns None if the value exists but is the wrong type.
+    fn get_memory<T>(this: &ScriptNpc, key: &str, default: T) -> Result<Option<T>, EntityRegistryError>
+        where Option<T>: From<AiMemoryValue>
+    {
+        let memory_value: Option<T> = if let Some(memory) = this.entity_registry.get_component::<AiMemory>(&this.entity)?
+        {
+            if let Some(value) = memory.get(key) {
+                value.clone().into()
+            } else {
+                Some(default)
+            }
+        } else {
+            Some(default)
+        };
+
+        Ok(memory_value)
+    }
+
+    fn set_memory<T>(this: &ScriptNpc, key: String, value: T) -> Result<(), EntityRegistryError>
+        where T: Into<AiMemoryValue>
+    {
+        let mut memory = match this.entity_registry.get_component::<AiMemory>(&this.entity)? {
+            Some(m) => m,
+            None => AiMemory::new()
+        };
+
+        memory.insert(key, value.into());
+
+        this.entity_registry.update_component(&this.entity, memory)
+    }
+}
+
+impl From<EntityRegistryError> for mlua::Error {
+    fn from(value: EntityRegistryError) -> Self {
+        RuntimeError(format!("Error in entity registry: {:?}", value))
     }
 }
 
@@ -142,6 +191,46 @@ impl UserData for ScriptNpc {
 
         methods.add_method("say", |_, this, message: String| {
             this.actions.lock().push(BehaviorAction::Say(message));
+            Ok(())
+        });
+
+        methods.add_method("get_memory_str", |_, this, args: (String, String)| {
+            let key = args.0;
+            let default = args.1;
+
+            let memory_value = match ScriptNpc::get_memory::<String>(this, &key, default)? {
+                Some(m) => m,
+                None => return Err(RuntimeError(format!("Unexpected type in memory for key: {key}")))
+            };
+
+            Ok(memory_value)
+        });
+
+        methods.add_method("set_memory_str", |_, this, args: (String, String)| {
+            let key = args.0;
+            let value = args.1;
+
+            ScriptNpc::set_memory::<String>(this, key, value)?;
+            Ok(())
+        });
+
+        methods.add_method("get_memory_int", |_, this, args: (String, i64)| {
+            let key = args.0;
+            let default = args.1;
+
+            let memory_value = match ScriptNpc::get_memory::<i64>(this, &key, default)? {
+                Some(m) => m,
+                None => return Err(RuntimeError(format!("Unexpected type in memory for key: {key}")))
+            };
+
+            Ok(memory_value)
+        });
+
+        methods.add_method("set_memory_int", |_, this, args: (String, i64)| {
+            let key = args.0;
+            let value = args.1;
+
+            ScriptNpc::set_memory::<i64>(this, key, value)?;
             Ok(())
         });
     }
