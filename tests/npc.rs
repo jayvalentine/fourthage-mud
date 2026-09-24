@@ -1,4 +1,7 @@
 mod common;
+use std::time::Duration;
+use tokio::time::sleep;
+
 use sqlx::PgPool;
 
 use crate::common::{TestServer, create_test_account};
@@ -36,4 +39,21 @@ async fn test_npc_memory(pool: PgPool) {
     let response = client.send_with_response("say recall").await;
     assert!(response.contains("You say: recall"));
     assert!(response.contains("remembered: foo"));
+}
+
+/// Verifies that NPC scripts can trigger NPC movement.
+#[sqlx::test(migrations = "./migrations")]
+async fn test_npc_movement(pool: PgPool) {
+    create_test_account(&pool, "player", "password", false).await.expect("player1 account creation failed");
+
+    let server = TestServer::start(&pool).await;
+
+    let mut client = server.connect_as("player", "password").await;
+
+    // Wait some time, assert that the NPC has left and returned.
+    // The NPC should move once per tick.
+    sleep(Duration::from_secs(5)).await;
+    let messages = client.recv().await;
+    assert!(messages.contains("Moving Test NPC arrived."));
+    assert!(messages.contains("Moving Test NPC left."));
 }
