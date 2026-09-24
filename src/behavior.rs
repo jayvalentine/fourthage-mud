@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use parking_lot::Mutex;
 use tokio::sync::mpsc::{self, error::TryRecvError};
 
-use crate::{entities::{AiBehavior, EntityRegistry, Location, Name}, event::{Event, EventTarget, EventTargetResolver, GameEvent}, model::ids::EntityId, script::{ScriptEngine, ScriptError, ScriptEvent, ScriptNpc}, system::{System, SystemContext, SystemError}};
+use crate::{entities::{AiBehavior, EntityRegistry, Location, Name}, event::{Event, EventTarget, EventTargetResolver, GameEvent}, model::{ids::{EntityId, RoomId}, rooms::Direction}, script::{ScriptEngine, ScriptError, ScriptEvent, ScriptNpc}, system::{System, SystemContext, SystemError}};
 
 pub struct BehaviorContext {
     entity: EntityId,
@@ -14,7 +14,8 @@ pub struct BehaviorContext {
 
 pub enum BehaviorAction {
     Say(String),
-    Emote(String)
+    Emote(String),
+    Move(Direction)
 }
 
 #[derive(Debug)]
@@ -144,6 +145,36 @@ impl System for BehaviorSystem {
                                         event: GameEvent::Message(message)
                                     };
                                     events.push(event);
+                                },
+                                BehaviorAction::Move(direction) => {
+                                    let current_room = match context.rooms().get_room(&RoomId::from_entity(loc.value)) {
+                                        Some(r) => r,
+                                        None => {
+                                            tracing::error!("Could not identify current room for entity: {entity}");
+                                            continue;
+                                        }
+                                    };
+
+                                    let destination_room = match current_room.get_destination(direction) {
+                                        Some(r) => r,
+                                        None => {
+                                            tracing::error!("Invalid direction '{}' for entity '{}'s current position ({})", direction, entity, loc.value);
+                                            continue;
+                                        }
+                                    };
+
+                                    let new_location = Location::new(destination_room.as_entity());
+
+                                    events.push(Event {
+                                        target: EventTarget::LocationExcept(loc.clone(), entity),
+                                        event: GameEvent::NpcLeft(entity)
+                                    });
+                                    events.push(Event {
+                                        target: EventTarget::LocationExcept(new_location.clone(), entity),
+                                        event: GameEvent::NpcEntered(entity)
+                                    });
+
+                                    context.entities().update_component(&entity, new_location)?;
                                 }
 
                             }

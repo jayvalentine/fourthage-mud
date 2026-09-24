@@ -10,6 +10,7 @@ use crate::behavior::BehaviorAction;
 use crate::entities::{AiMemory, AiMemoryValue, EntityRegistry, EntityRegistryError};
 use crate::event::{EventType, GameEvent};
 use crate::model::ids::EntityId;
+use crate::model::rooms::Direction;
 
 #[derive(Debug)]
 pub enum ScriptError {
@@ -191,6 +192,13 @@ impl UserData for ScriptNpc {
 
         methods.add_method("say", |_, this, message: String| {
             this.actions.lock().push(BehaviorAction::Say(message));
+            Ok(())
+        });
+
+        methods.add_method("move", |_, this, direction: String| {
+            let direction = Direction::from_string(&direction)
+                .map_err(|_| RuntimeError(format!("Invalid direction: {direction}")))?;
+            this.actions.lock().push(BehaviorAction::Move(direction));
             Ok(())
         });
 

@@ -161,6 +161,7 @@ async fn welcome(writer: &mut OwnedWriteHalf, context: &SessionContext) -> Resul
 async fn handle_input(session_context: &mut SessionContext, input: &str) -> Result<Option<String>, SessionError> {
     let response = match Command::parse(input) {
         Ok(command) => {
+            tracing::debug!("Handling command from '{}': {:?}", session_context.player_id, command);
             let result = handle_command(session_context, command).await?;
 
             match result {
@@ -189,6 +190,8 @@ async fn session_loop(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedR
             line = recv(reader) => {
                 match line {
                     Ok(Some(input)) => {
+                        tracing::debug!("Handling command from player '{}': {}", session_context.player_id, input);
+                        
                         let response = handle_input(session_context, &input).await?;
                         if let Some(s) = response {
                             send(writer, &s).await?;
@@ -204,7 +207,23 @@ async fn session_loop(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedR
             event = session_context.receiver.recv() => {
                 match event {
                     Some(e) => {
+                        tracing::debug!("Handling event for player '{}': {:?}", session_context.player_id, e);
+
                         match e {
+                            GameEvent::NpcEntered(e) => {
+                                // If there is no name in the registry for the sending entity it's probably despawned.
+                                // Don't bother handling the message in that case.
+                                if let Some(name) = session_context.entities.get_component::<Name>(&e)? {
+                                    send(writer, &format!("{name} arrived.")).await?;
+                                }
+                            },
+                            GameEvent::NpcLeft(e) => {
+                                // If there is no name in the registry for the sending entity it's probably despawned.
+                                // Don't bother handling the message in that case.
+                                if let Some(name) = session_context.entities.get_component::<Name>(&e)? {
+                                    send(writer, &format!("{name} left.")).await?;
+                                }
+                            }
                             GameEvent::Message(s) => send(writer, &s).await?,
                             GameEvent::PlayerSaid(name, msg) => send(writer, &format!("{name} says: {msg}")).await?,
                             GameEvent::SessionEnded => {

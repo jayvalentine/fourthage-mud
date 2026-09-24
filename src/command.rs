@@ -10,6 +10,7 @@ use crate::model::{rooms::Direction, ids::{EntityId, RoomId, Alias}};
 use crate::session::SessionContext;
 use crate::data;
 
+#[derive(Debug)]
 pub struct Keywords(pub Vec<String>);
 
 impl fmt::Display for Keywords {
@@ -18,6 +19,7 @@ impl fmt::Display for Keywords {
     }
 }
 
+#[derive(Debug)]
 pub enum Command {
     Go(Direction),
     Say(String),
@@ -45,21 +47,25 @@ pub enum Command {
     Quit
 }
 
+#[derive(Debug)]
 pub enum SpawnTarget {
     Item,
     Npc
 }
 
+#[derive(Debug)]
 pub enum EditTarget {
     Room,
     Entity(Alias)
 }
 
+#[derive(Debug)]
 pub enum EditField {
     Description,
     Name
 }
 
+#[derive(Debug)]
 pub enum SaveTarget {
     Rooms,
     Items,

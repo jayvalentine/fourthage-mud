@@ -17,14 +17,20 @@ pub enum EventTarget {
 
 #[derive(Clone, Debug)]
 pub enum GameEvent {
+    NpcEntered(EntityId),
+    NpcLeft(EntityId),
+
     Message(String),
     
     /// name, message
     PlayerSaid(String, String),
-    SessionEnded
+
+    SessionEnded,
 }
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum EventType {
+    NpcEntered,
+    NpcLeft,
     Message,
     PlayerSaid,
     SessionEnded
@@ -33,6 +39,8 @@ pub enum EventType {
 impl From<&GameEvent> for EventType {
     fn from(event: &GameEvent) -> Self {
         match event {
+            GameEvent::NpcEntered(_) => EventType::NpcEntered,
+            GameEvent::NpcLeft(_) => EventType::NpcLeft,
             GameEvent::Message(_) => EventType::Message,
             GameEvent::PlayerSaid(_, _) => EventType::PlayerSaid,
             GameEvent::SessionEnded => EventType::SessionEnded
@@ -43,6 +51,8 @@ impl From<&GameEvent> for EventType {
 impl ToString for EventType {
     fn to_string(&self) -> String {
         match self {
+            EventType::NpcEntered => "npc_entered".to_string(),
+            EventType::NpcLeft => "npc_left".to_string(),
             EventType::Message => "message".to_string(),
             EventType::PlayerSaid => "player_said".to_string(),
             EventType::SessionEnded => "session_ended".to_string()
