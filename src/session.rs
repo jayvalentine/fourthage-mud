@@ -8,7 +8,7 @@ use tokio::sync::mpsc;
 use crate::command::{Command, CommandExecutionError, CommandParseError, CommandResult, handle_command};
 use crate::entities::{EntityRegistry, EntityRegistryError, Name, Player, Location};
 use crate::event::{EventBus, EventBusError, EventTargetResolver, GameEvent, SessionEventSender};
-use crate::model::ids::EntityId;
+use crate::model::ids::{EntityId, RoomId};
 use crate::model::rooms::{RoomGraph};
 use crate::db::{self, DatabaseError};
 use crate::password::{self, PasswordError};
@@ -244,7 +244,15 @@ async fn session_loop(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedR
 }
 
 /// Execute the game loop for the given session.
-async fn run_internal(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedReadHalf>, pool: PgPool, world: Arc<RoomGraph>, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<(), SessionError> {
+async fn run_internal(
+    writer: &mut OwnedWriteHalf,
+    reader: &mut BufReader<OwnedReadHalf>,
+    pool: PgPool,
+    world: Arc<RoomGraph>,
+    event_bus: Arc<EventBus>,
+    entities: Arc<EntityRegistry>,
+    starting_room: EntityId) -> Result<(), SessionError>
+{
     send(writer, "Enter your username:").await?;
     let username = match recv(reader).await? {
         Some(s) => s,
@@ -281,7 +289,7 @@ async fn run_internal(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedR
 
     let location = match persistence::load_location(&account.id, &pool).await? {
         Some(l) => l,
-        None => Location { value: world.default_room_id().as_entity() }
+        None => Location { value: starting_room }
     };
     let mut session_context = SessionContext::new(account.id, account.username, account.is_admin, location, world, pool, event_bus, entities)?;
     welcome(writer, &session_context).await?;
@@ -295,8 +303,16 @@ async fn run_internal(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedR
     result
 }
 
-pub async fn run(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedReadHalf>, pool: PgPool, world: Arc<RoomGraph>, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) -> Result<(), SessionError> {
-    let result = run_internal(writer, reader, pool, world, event_bus, entities).await;
+pub async fn run(
+    writer: &mut OwnedWriteHalf,
+    reader: &mut BufReader<OwnedReadHalf>,
+    pool: PgPool,
+    world: Arc<RoomGraph>,
+    event_bus: Arc<EventBus>,
+    entities: Arc<EntityRegistry>,
+    starting_room: EntityId) -> Result<(), SessionError>
+{
+    let result = run_internal(writer, reader, pool, world, event_bus, entities, starting_room).await;
     match &result {
         Ok(()) => (),
         Err(e) => {

@@ -13,4 +13,4 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./data:/app/data
+      - ${MUD_DATA_DIR}:/app/data

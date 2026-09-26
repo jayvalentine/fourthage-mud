@@ -81,7 +81,7 @@ async fn seed(data_path: &str, pool: &PgPool, room_graph: &RoomGraph, entities: 
     Ok(())
 }
 
-async fn accept_loop(listener: TcpListener, world: Arc<RoomGraph>, pool: sqlx::PgPool, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>) {
+async fn accept_loop(listener: TcpListener, world: Arc<RoomGraph>, pool: sqlx::PgPool, event_bus: Arc<EventBus>, entities: Arc<EntityRegistry>, starting_room: EntityId) {
     loop {
         match listener.accept().await {
             Ok((socket, addr)) => {
@@ -95,7 +95,7 @@ async fn accept_loop(listener: TcpListener, world: Arc<RoomGraph>, pool: sqlx::P
                     let (reader, mut writer) = socket.into_split();
                     let mut reader = BufReader::new(reader);
 
-                    session::run(&mut writer, &mut reader, pool, world, event_bus, entities).await.unwrap_or_else(|e| {
+                    session::run(&mut writer, &mut reader, pool, world, event_bus, entities, starting_room).await.unwrap_or_else(|e| {
                         tracing::error!("Error during session from {addr}: {e:?}");
                     });
 
@@ -139,8 +139,11 @@ async fn game_loop(context: Arc<SystemContext>, systems: Vec<Box<dyn System>>) -
     }
 }
 
-pub async fn run_server(listener: TcpListener, shutdown_rx: Receiver<()>, database_url: &str, data_path: &str, starting_room: Uuid) -> Result<(), AppError> {
+pub async fn run_server(listener: TcpListener, shutdown_rx: Receiver<()>, database_url: &str, data_path: &str) -> Result<(), AppError> {
     tracing::info!("Starting server...");
+
+    let config = data::load_app_config_data(&format!("{data_path}/config.yaml"))
+        .map_err(|e| AppError::InitialisationError(format!("Failed to load config: {e:?}")))?;
 
     tracing::info!("Connecting to database at {database_url}");
     let pool = sqlx::postgres::PgPoolOptions::new()
@@ -154,11 +157,16 @@ pub async fn run_server(listener: TcpListener, shutdown_rx: Receiver<()>, databa
 
     let (npc_tx, npc_rx) = mpsc::channel::<(EntityId, GameEvent)>(EventBus::BUFFER_SIZE);
 
-    let world = Arc::new(RoomGraph::new(RoomId::from_uuid(starting_room)));
+    let world = Arc::new(RoomGraph::new());
     let event_bus = Arc::new(EventBus::new());
     let entities = Arc::new(EntityRegistry::new());
 
     seed(data_path, &pool, &world, &entities).await?;
+
+    let starting_room = match entities.resolve_alias(&config.starting_room) {
+        Some(r) => r,
+        None => return Err(AppError::InitialisationError(format!("Unknown starting room: {}", config.starting_room)))
+    };
 
     entities.query2::<Npc, EventHandler, _, _>(|iter| {
         for (entity, _) in iter {
@@ -183,7 +191,7 @@ pub async fn run_server(listener: TcpListener, shutdown_rx: Receiver<()>, databa
     tracing::info!("Listening on port {}", listener.local_addr().map(|addr| addr.port()).unwrap_or(0));
 
     tokio::select! {
-        _ = accept_loop(listener, world, pool, event_bus, entities) => {},
+        _ = accept_loop(listener, world, pool, event_bus, entities, starting_room) => {},
         _ = shutdown_rx => {
             tracing::info!("Shutdown signal received, stopping server");
         }

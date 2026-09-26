@@ -87,17 +87,15 @@ struct RoomGraphInner {
 }
 
 pub struct RoomGraph {
-    inner: RwLock<RoomGraphInner>,
-    starting_room: RoomId
+    inner: RwLock<RoomGraphInner>
 }
 
 impl RoomGraph {
-    pub fn new(starting_room: RoomId) -> RoomGraph {
+    pub fn new() -> RoomGraph {
         RoomGraph {
             inner: RwLock::new(RoomGraphInner {
                 rooms: HashMap::new()
-            }),
-            starting_room
+            })
         }
     }
 
@@ -114,9 +112,5 @@ impl RoomGraph {
 
     pub fn rooms(&self) -> MappedRwLockReadGuard<RawRwLock, HashMap<RoomId, Arc<RoomGraphNode>>> {
         RwLockReadGuard::map(self.inner.read(), |inner| &inner.rooms)
-    }
-
-    pub fn default_room_id(&self) -> RoomId {
-        self.starting_room.clone()
     }
 }

@@ -114,7 +114,7 @@ impl TestServer {
         tracing::info!("Test server listening on {}", addr);
 
         let task = tokio::spawn(async move {
-            run_server(listener, shutdown_rx, &db_url, data_path.to_str().unwrap_or_default(), uuid!("00000000-0000-0000-0000-000000000001"))
+            run_server(listener, shutdown_rx, &db_url, data_path.to_str().unwrap_or_default())
                 .await.expect("Server error.");
         });
 

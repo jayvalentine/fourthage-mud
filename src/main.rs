@@ -16,7 +16,6 @@ async fn main() -> Result<(), AppError> {
        AppError::InitialisationError(format!("Error reading MUD_DATA_DIR environment variable: {e}"))
     })?;
 
-
     let listener = TcpListener::bind("0.0.0.0:8080").await.map_err(|e| {
         AppError::InitialisationError(format!("Error starting TCP listener: {e}"))
     })?;
@@ -31,5 +30,5 @@ async fn main() -> Result<(), AppError> {
         let _ = shutdown_tx.send(());
     });
 
-    run_server(listener, shutdown_rx, &database_url, &data_path, uuid!("019e5690-0757-7256-97c1-a403f4d347ca")).await
+    run_server(listener, shutdown_rx, &database_url, &data_path).await
 }

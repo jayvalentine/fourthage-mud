@@ -11,7 +11,7 @@ use crate::model::rooms::Direction;
 #[derive(Debug)]
 pub enum DataLoadError {
     FileRead,
-    Deserialization,
+    Deserialization(serde_yaml::Error),
     UuidDeserialization
 }
 
@@ -22,8 +22,8 @@ impl From<std::io::Error> for DataLoadError {
 }
 
 impl From<serde_yaml::Error> for DataLoadError {
-    fn from(_: serde_yaml::Error) -> DataLoadError {
-        DataLoadError::Deserialization
+    fn from(e: serde_yaml::Error) -> DataLoadError {
+        DataLoadError::Deserialization(e)
     }
 }
 
@@ -111,6 +111,18 @@ impl Serialize for EntityId {
         let s = self.as_uuid().to_string();
         String::serialize(&s, serializer)
     }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct AppConfigData {
+    pub starting_room: Alias
+}
+
+pub fn load_app_config_data(file: &str) -> Result<AppConfigData, DataLoadError> {
+    let yaml = std::fs::read_to_string(file)?;
+    let config = serde_yaml::from_str(&yaml)?;
+
+    Ok(config)
 }
 
 #[derive(Serialize, Deserialize)]
