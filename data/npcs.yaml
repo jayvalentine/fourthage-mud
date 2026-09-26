@@ -1,7 +1,0 @@
-019f2db6-bccc-7dc0-838e-1e376d115714:
-  alias: npc:market_dog
-  name: Stray Dog
-  description: A mangy stray dog.
-  spawn_location: room:market_east
-  behavior_template: scripts/dog.lua
-  event_subs: [player_said]
