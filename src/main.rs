@@ -2,7 +2,6 @@ use fourthage_mud::run_server;
 use fourthage_mud::AppError;
 use tokio::net::TcpListener;
 use tokio::signal;
-use uuid::uuid;
 
 #[tokio::main]
 async fn main() -> Result<(), AppError> {

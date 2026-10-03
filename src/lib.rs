@@ -19,18 +19,18 @@ mod seed;
 mod system;
 mod behavior;
 mod script;
+mod world_ops;
 
 use model::rooms::RoomGraph;
 use event::EventBus;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot::Receiver;
 use tokio::time::{Instant, interval, MissedTickBehavior};
-use uuid::Uuid;
 
 use crate::behavior::{BehaviorRegistry, BehaviorSystem};
 use crate::entities::{EntityRegistry, EventHandler, Npc};
 use crate::event::{GameEvent, NpcEventSender};
-use crate::model::ids::{EntityId, RoomId};
+use crate::model::ids::EntityId;
 use crate::persistence::PersistenceSystem;
 use crate::script::ScriptEngine;
 use crate::seed::{ItemSeeder, NpcSeeder, RoomSeeder, Seeder};

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use parking_lot::Mutex;
 use tokio::sync::mpsc::{self, error::TryRecvError};
 
-use crate::{entities::{AiBehavior, EntityRegistry, Location, Name}, event::{Event, EventTarget, EventTargetResolver, GameEvent}, model::{ids::{EntityId, RoomId}, rooms::Direction}, script::{ScriptEngine, ScriptError, ScriptEvent, ScriptNpc}, system::{System, SystemContext, SystemError}};
+use crate::{entities::{AiBehavior, EntityRegistry, Location, Name}, event::{Event, EventTarget, EventTargetResolver, GameEvent}, model::{ids::{EntityId, RoomId}, rooms::Direction}, script::{ScriptEngine, ScriptError, ScriptEvent, ScriptNpc}, system::{System, SystemContext, SystemError}, world_ops};
 
 pub struct BehaviorContext {
     entity: EntityId,
@@ -131,20 +131,24 @@ impl System for BehaviorSystem {
                         for action in actions {
                             match action {
                                 BehaviorAction::Say(message) => {
-                                    let message = format!("{} says: {}", name, message);
-                                    let event = Event {
-                                        target: EventTarget::LocationExcept(loc.clone(), entity),
-                                        event: GameEvent::Message(message)
+                                    let mut say_events = match world_ops::say(context.entities(), entity, message) {
+                                        Ok(e) => e,
+                                        Err(err) => {
+                                            tracing::error!("Error occurred handling entity message '{}': {:?}", entity, err);
+                                            continue;
+                                        }
                                     };
-                                    events.push(event);
+                                    events.append(&mut say_events);
                                 },
                                 BehaviorAction::Emote(emote) => {
-                                    let message = format!("{} {}", name, emote);
-                                    let event = Event {
-                                        target: EventTarget::LocationExcept(loc.clone(), entity),
-                                        event: GameEvent::Message(message)
+                                    let mut emote_events = match world_ops::emote(context.entities(), entity, emote) {
+                                        Ok(e) => e,
+                                        Err(err) => {
+                                            tracing::error!("Error occurred handling entity emote '{}': {:?}", entity, err);
+                                            continue;
+                                        }
                                     };
-                                    events.push(event);
+                                    events.append(&mut emote_events);
                                 },
                                 BehaviorAction::Move(direction) => {
                                     let current_room = match context.rooms().get_room(&RoomId::from_entity(loc.value)) {
@@ -163,18 +167,15 @@ impl System for BehaviorSystem {
                                         }
                                     };
 
-                                    let new_location = Location::new(destination_room.as_entity());
+                                    let mut move_events = match world_ops::move_entity(context.entities(), entity, *destination_room) {
+                                        Ok(e) => e,
+                                        Err(err) => {
+                                            tracing::error!("Error occurred moving entity '{}': {:?}", entity, err);
+                                            continue;
+                                        }
+                                    };
 
-                                    events.push(Event {
-                                        target: EventTarget::LocationExcept(loc.clone(), entity),
-                                        event: GameEvent::NpcLeft(entity)
-                                    });
-                                    events.push(Event {
-                                        target: EventTarget::LocationExcept(new_location.clone(), entity),
-                                        event: GameEvent::NpcEntered(entity)
-                                    });
-
-                                    context.entities().update_component(&entity, new_location)?;
+                                    events.append(&mut move_events);
                                 }
 
                             }

@@ -8,7 +8,7 @@ use tokio::sync::mpsc;
 use crate::command::{Command, CommandExecutionError, CommandParseError, CommandResult, handle_command};
 use crate::entities::{EntityRegistry, EntityRegistryError, Name, Player, Location};
 use crate::event::{EventBus, EventBusError, EventTargetResolver, GameEvent, SessionEventSender};
-use crate::model::ids::{EntityId, RoomId};
+use crate::model::ids::EntityId;
 use crate::model::rooms::{RoomGraph};
 use crate::db::{self, DatabaseError};
 use crate::password::{self, PasswordError};
@@ -42,7 +42,8 @@ impl From<PasswordError> for SessionError {
 impl From<CommandExecutionError> for SessionError {
     fn from(value: CommandExecutionError) -> Self {
         match value {
-            CommandExecutionError::Unrecoverable(s) => SessionError::Internal(s)
+            CommandExecutionError::Unrecoverable(s) => SessionError::Internal(s),
+            CommandExecutionError::WorldOperation(e) => SessionError::Internal(format!("Error occurred in world operation: {e:?}"))
         }
     }
 }
@@ -210,14 +211,14 @@ async fn session_loop(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedR
                         tracing::debug!("Handling event for player '{}': {:?}", session_context.player_id, e);
 
                         match e {
-                            GameEvent::NpcEntered(e) => {
+                            GameEvent::EntityEntered(e) => {
                                 // If there is no name in the registry for the sending entity it's probably despawned.
                                 // Don't bother handling the message in that case.
                                 if let Some(name) = session_context.entities.get_component::<Name>(&e)? {
                                     send(writer, &format!("{name} arrived.")).await?;
                                 }
                             },
-                            GameEvent::NpcLeft(e) => {
+                            GameEvent::EntityLeft(e) => {
                                 // If there is no name in the registry for the sending entity it's probably despawned.
                                 // Don't bother handling the message in that case.
                                 if let Some(name) = session_context.entities.get_component::<Name>(&e)? {
@@ -225,7 +226,8 @@ async fn session_loop(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedR
                                 }
                             }
                             GameEvent::Message(s) => send(writer, &s).await?,
-                            GameEvent::PlayerSaid(name, msg) => send(writer, &format!("{name} says: {msg}")).await?,
+                            GameEvent::EntitySaid(_, name, msg) => send(writer, &format!("{name} says: {msg}")).await?,
+                            GameEvent::EntityEmoted(_, name, msg) => send(writer, &format!("{name} {msg}")).await?,
                             GameEvent::SessionEnded => {
                                 tracing::debug!("Entity {:?} received SessionEnded", session_context.player_id);
                                 break;

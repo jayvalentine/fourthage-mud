@@ -8,7 +8,7 @@ use crate::event::{Event, EventTarget, GameEvent};
 use crate::model::rooms::{DirectionParseError, RoomGraphNode};
 use crate::model::{rooms::Direction, ids::{EntityId, RoomId, Alias}};
 use crate::session::SessionContext;
-use crate::data;
+use crate::{data, world_ops};
 
 #[derive(Debug)]
 pub struct Keywords(pub Vec<String>);
@@ -131,7 +131,15 @@ pub enum CommandResult {
 
 pub enum CommandExecutionError {
     /// Command could not be executed due to an unrecoverable error.
-    Unrecoverable(String)
+    Unrecoverable(String),
+
+    WorldOperation(world_ops::WorldOperationError)
+}
+
+impl From<world_ops::WorldOperationError> for CommandExecutionError {
+    fn from(value: world_ops::WorldOperationError) -> Self {
+        CommandExecutionError::WorldOperation(value)
+    }
 }
 
 impl From<EntityRegistryError> for CommandExecutionError {
@@ -302,9 +310,8 @@ impl Command {
 }
 
 fn get_current_position(context: &SessionContext) -> Result<Location, CommandExecutionError> {
-    context.entities.get_component::<Location>(&context.player_id)
-        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get current position of entity {:?}", &context.player_id)))?
-        .ok_or(CommandExecutionError::Unrecoverable(format!("Entity {:?} has no position component", &context.player_id)))
+    let loc = world_ops::get_entity_location(&context.entities, &context.player_id)?;
+    Ok(loc)
 }
 
 fn get_room_description(context: &SessionContext, id: &RoomId) -> Result<String, CommandExecutionError> {
@@ -337,13 +344,6 @@ fn get_room_description(context: &SessionContext, id: &RoomId) -> Result<String,
 
     let response = format!("{room_name}\n\n{room_desc}\n\nHere is: {entities}\n\nFrom here you can go: {exits}\n");
     Ok(response)
-}
-
-fn get_entity_name(context: &SessionContext, entity: &EntityId) -> Result<Name, CommandExecutionError> {
-    match context.entities.get_component::<Name>(entity)? {
-        Some(n) => Ok(n),
-        None => Err(CommandExecutionError::Unrecoverable(format!("Entity {entity} has no name (error in name resolution).")))
-    }
 }
 
 fn get_entity_description(context: &SessionContext, entity: &EntityId) -> Result<Option<Description>, CommandExecutionError> {
@@ -386,9 +386,8 @@ fn resolve_entities_in_context(context: &SessionContext, keywords: &Keywords) ->
 }
 
 fn get_player_name(context: &SessionContext) -> Result<Name, CommandExecutionError> {
-    context.entities.get_component::<Name>(&context.player_id)
-        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not get name for entity: {:?}", context.player_id)))?
-        .ok_or(CommandExecutionError::Unrecoverable(format!("Entity {:?} had no Name component", context.player_id)))
+    let name = world_ops::get_entity_name(&context.entities, &context.player_id)?;
+    Ok(name)
 }
 
 async fn handle_go(context: &mut SessionContext, direction: Direction) -> Result<CommandResult, CommandExecutionError> {
@@ -402,28 +401,20 @@ async fn handle_go(context: &mut SessionContext, direction: Direction) -> Result
         None => return Ok(CommandResult::Query(QueryResult { response: format!("You cannot go {direction} from here.") }))
     };
 
-    let new_position = Location { value: destination_room_id.as_entity().clone() };
-    context.entities.update_component(&context.player_id, new_position.clone())
-        .map_err(|_| CommandExecutionError::Unrecoverable(format!("Could not update position of entity '{:?}'", &context.player_id)))?;
+    let events = world_ops::move_entity(&context.entities, context.player_id, *destination_room_id)?;
 
     let description = get_room_description(context, destination_room_id)?;
 
     let response = format!("You go {direction}.\n\n{description}");
-    let result = ActionResult { events: Vec::new(), response: Some(response) };
+    let result = ActionResult { events, response: Some(response) };
     Ok(CommandResult::Action(result))
 }
 
 fn handle_say(context: &SessionContext, sentence: &str) -> Result<CommandResult, CommandExecutionError> {
-    let name = get_player_name(context)?;
-    let position = get_current_position(context)?;
+    let events = world_ops::say(&context.entities, context.player_id, sentence.to_string())?;
 
     let result = ActionResult {
-        events: vec![
-            Event {
-                target: EventTarget::LocationExcept(position, context.player_id.clone()),
-                event: GameEvent::PlayerSaid(name.to_string(), sentence.to_string())
-            }
-        ],
+        events,
         response: Some(format!("You say: {sentence}"))
     };
     Ok(CommandResult::Action(result))
@@ -485,27 +476,16 @@ async fn handle_take(context: &SessionContext, keywords: Keywords) -> Result<Com
         _ => return Ok(CommandResult::Query(format!("Which '{}'?", keywords).into()))
     };
 
-    let item_name = get_entity_name(context, target)?;
+    let item_name = world_ops::get_entity_name(&context.entities, target)?;
 
     // Check that the resolved entity is actually an item.
     if context.entities.get_component::<Item>(target)?.is_none() {
         return Ok(CommandResult::Query(format!("You can't take '{item_name}'!").into()))
     }
 
-    // Update position of target entity.
-    let new_location = Location::new(context.player_id.clone());
-    context.entities.update_component::<Location>(target, new_location.clone())?;
-
-    let player_name = get_player_name(context)?;
-    let player_location = get_current_position(context)?;
-    let message = format!("{player_name} picked up '{item_name}'.");
+    let events = world_ops::take_item(&context.entities, context.player_id, *target)?;
     let action = ActionResult {
-        events: vec![
-            Event {
-                target: EventTarget::LocationExcept(player_location, context.player_id.clone()),
-                event: GameEvent::Message(message)
-            }
-        ],
+        events,
         response: Some(format!("You took '{item_name}'"))
     };
     Ok(CommandResult::Action(action))
@@ -520,27 +500,16 @@ async fn handle_drop(context: &SessionContext, keywords: Keywords) -> Result<Com
         _ => return Ok(CommandResult::Query(format!("Which '{}'?", keywords).into()))
     };
 
-    let item_name = get_entity_name(context, target)?;
+    let item_name = world_ops::get_entity_name(&context.entities, target)?;
 
     // Check that the resolved entity is actually an item.
     if context.entities.get_component::<Item>(target)?.is_none() {
         return Ok(CommandResult::Query(format!("You can't drop '{item_name}'!").into()))
     }
 
-    // Update position of target entity.
-    let new_location = get_current_position(context)?;
-    context.entities.update_component::<Location>(target, new_location.clone())?;
-
-    let player_name = get_player_name(context)?;
-    let player_location = get_current_position(context)?;
-    let message = format!("{player_name} dropped '{item_name}'.");
+    let events = world_ops::drop_item(&context.entities, context.player_id, *target)?;
     let action = ActionResult {
-        events: vec![
-            Event {
-                target: EventTarget::LocationExcept(player_location, context.player_id.clone()),
-                event: GameEvent::Message(message)
-            }
-        ],
+        events,
         response: Some(format!("You dropped '{item_name}'"))
     };
     Ok(CommandResult::Action(action))
@@ -555,7 +524,7 @@ fn handle_inspect(context: &SessionContext, keywords: Keywords) -> Result<Comman
         _ => return Ok(CommandResult::Query(format!("Which '{}'?", keywords).into()))
     };
 
-    let item_name = get_entity_name(context, target)?;
+    let item_name = world_ops::get_entity_name(&context.entities, target)?;
     let item_description = get_entity_description(context, target)?;
     let item_description = match item_description {
         Some(d) => format!("\n\n{d}"),

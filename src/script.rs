@@ -263,7 +263,7 @@ impl UserData for ScriptEvent {
         methods.add_method("text", |_, this, ()| {
             let text = match &this.inner {
                 GameEvent::Message(s) => Some(s.to_string()),
-                GameEvent::PlayerSaid(_, s) => Some(s.to_string()),
+                GameEvent::EntitySaid(_, _, s) => Some(s.to_string()),
                 _ => None
             };
             Ok(text)

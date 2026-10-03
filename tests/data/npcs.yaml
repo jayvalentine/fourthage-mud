@@ -4,7 +4,7 @@
   description: 'An NPC for testing purposes.'
   spawn_location: starting_room
   behavior_template: 'scripts/test_static.lua'
-  event_subs: [player_said]
+  event_subs: [entity_said]
 00000000-0000-0000-0000-000000000005:
   alias: npc:test_moving
   name: 'Moving Test NPC'
