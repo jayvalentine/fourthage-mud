@@ -20,6 +20,7 @@ mod system;
 mod behavior;
 mod script;
 mod world_ops;
+mod schedule;
 
 use model::rooms::RoomGraph;
 use event::EventBus;
@@ -32,6 +33,7 @@ use crate::entities::{EntityRegistry, EventHandler, Npc};
 use crate::event::{GameEvent, NpcEventSender};
 use crate::model::ids::EntityId;
 use crate::persistence::PersistenceSystem;
+use crate::schedule::{Schedule, SchedulerSystem};
 use crate::script::ScriptEngine;
 use crate::seed::{ItemSeeder, NpcSeeder, RoomSeeder, Seeder};
 use crate::system::{System, SystemContext, SystemError};
@@ -112,7 +114,7 @@ async fn accept_loop(listener: TcpListener, world: Arc<RoomGraph>, pool: sqlx::P
 
 const TICK_RATE: Duration = Duration::from_secs(1);
 
-async fn game_loop(context: Arc<SystemContext>, systems: Vec<Box<dyn System>>) -> ! {
+async fn game_loop(mut context: SystemContext, systems: Vec<Box<dyn System>>) -> ! {
     let mut systems = systems;
     let mut interval = interval(TICK_RATE);
     interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
@@ -120,7 +122,7 @@ async fn game_loop(context: Arc<SystemContext>, systems: Vec<Box<dyn System>>) -
     loop {
         interval.tick().await;
         let tick_start = Instant::now();
-        tracing::debug!("Game loop tick...");
+        tracing::debug!("Game loop tick {}...", context.current_tick());
         for system in systems.iter_mut() {
             let system_start = Instant::now();
             if let Err(e) = system.run(&context).await {
@@ -136,6 +138,8 @@ async fn game_loop(context: Arc<SystemContext>, systems: Vec<Box<dyn System>>) -
         } else {
             tracing::debug!("Game loop tick done in {:?}.", elapsed);
         }
+
+        context.increment_tick();
     }
 }
 
@@ -176,14 +180,18 @@ pub async fn run_server(listener: TcpListener, shutdown_rx: Receiver<()>, databa
         Ok(())
     }).or(Err(AppError::InitialisationError("Failed to register entities".into())))?;
 
-    let system_context = Arc::new(SystemContext::new(entities.clone(), world.clone(), pool.clone(), event_bus.clone()));
+    let system_context = SystemContext::new(entities.clone(), world.clone(), pool.clone(), event_bus.clone());
+
+    let schedules: Vec<Schedule> = data::load(&format!("{data_path}/schedules.yaml"))
+        .map_err(|e| AppError::InitialisationError(format!("Failed to load schedules: {:?}", e)))?;
 
     let script_engine = ScriptEngine::new().map_err(|e| AppError::InitialisationError(format!("Failed to initialise script engine: {:?}", e)))?;
     let script_engine = Arc::new(Mutex::new(script_engine));
 
     let systems = vec![
         Box::new(PersistenceSystem) as Box<dyn System>,
-        Box::new(BehaviorSystem::new(BehaviorRegistry::new(script_engine), npc_rx)) as Box<dyn System>
+        Box::new(BehaviorSystem::new(BehaviorRegistry::new(script_engine), npc_rx)) as Box<dyn System>,
+        Box::new(SchedulerSystem::new(schedules)) as Box<dyn System>
     ];
 
     let game_loop_handle = tokio::spawn(game_loop(system_context, systems));

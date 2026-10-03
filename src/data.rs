@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use serde::de::DeserializeOwned;
 use serde::{Serialize, de::Error};
 use serde::Deserialize;
 use uuid::Uuid;
@@ -184,4 +185,9 @@ pub fn save_npcs(file: &str, items: &HashMap<EntityId, NpcData>) -> Result<(), D
     let yaml = serde_yaml::to_string(items)?;
     std::fs::write(file, yaml)?;
     Ok(())
+}
+
+pub fn load<T: DeserializeOwned>(file: &str) -> Result<T, DataLoadError> {
+    let yaml = std::fs::read_to_string(file)?;
+    Ok(serde_yaml::from_str(&yaml)?)
 }
