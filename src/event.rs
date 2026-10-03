@@ -12,7 +12,10 @@ pub enum EventTarget {
     Entity(EntityId),
 
     /// All entities in the given location, except the named entity.
-    LocationExcept(Location, EntityId)
+    LocationExcept(Location, EntityId),
+
+    /// All entities.
+    All
 }
 
 #[derive(Clone, Debug)]
@@ -28,6 +31,10 @@ pub enum GameEvent {
     /// id, name, emote
     EntityEmoted(EntityId, Name, String),
 
+    /// The phase of a cycle schedule has changed.
+    /// cycle-name, new-phase, announcement
+    Scheduler(String, String, Option<String>),
+
     SessionEnded,
 }
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -37,6 +44,7 @@ pub enum EventType {
     Message,
     EntitySaid,
     EntityEmoted,
+    Scheduler,
     SessionEnded
 }
 
@@ -48,6 +56,7 @@ impl From<&GameEvent> for EventType {
             GameEvent::Message(_) => EventType::Message,
             GameEvent::EntitySaid(_, _, _) => EventType::EntitySaid,
             GameEvent::EntityEmoted(_, _, _) => EventType::EntityEmoted,
+            GameEvent::Scheduler(_, _, _) => EventType::Scheduler,
             GameEvent::SessionEnded => EventType::SessionEnded
         }
     }
@@ -61,6 +70,7 @@ impl ToString for EventType {
             EventType::Message => "message".to_string(),
             EventType::EntitySaid => "entity_said".to_string(),
             EventType::EntityEmoted => "entity_emoted".to_string(),
+            EventType::Scheduler => "cycle_phase_changed".to_string(),
             EventType::SessionEnded => "session_ended".to_string()
         }
     }
@@ -76,6 +86,7 @@ impl FromStr for EventType {
             "message" => Ok(EventType::Message),
             "entity_said" => Ok(EventType::EntitySaid),
             "entity_emoted" => Ok(EventType::EntityEmoted),
+            "cycle_phase_changed" => Ok(EventType::Scheduler),
             "session_ended" => Ok(EventType::SessionEnded),
             _ => Err(())
         }

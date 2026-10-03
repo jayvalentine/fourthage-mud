@@ -1,0 +1,8 @@
+- type: Cycle
+  name: test_schedule
+  ticks_per_phase: 2
+  phases:
+  - name: tick
+    announcement: tick
+  - name: tock
+    announcement: tock

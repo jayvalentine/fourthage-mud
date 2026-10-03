@@ -398,6 +398,11 @@ impl EventTargetResolver<EntityRegistryError> for EntityRegistry {
                     None => Vec::new()
                 };
                 Ok(targets)
+            },
+            EventTarget::All => {
+                let internal = self.internal.read();
+                let entities: Vec<EntityId> = internal.id_to_alias.keys().map(|e| *e).collect();
+                Ok(entities)
             }
         }
     }

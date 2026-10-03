@@ -28,18 +28,6 @@ pub async fn load_location(entity: &EntityId, pool: &PgPool) -> Result<Option<Lo
 /// to be frequent.
 pub struct PersistenceSystem;
 
-impl From<DatabaseError> for SystemError {
-    fn from(err: DatabaseError) -> Self {
-        SystemError::Database(err)
-    }
-}
-
-impl From<EntityRegistryError> for SystemError {
-    fn from(err: EntityRegistryError) -> Self {
-        SystemError::EntityRegistry(err)
-    }
-}
-
 #[async_trait]
 impl System for PersistenceSystem {
     fn name(&self) -> &str {
