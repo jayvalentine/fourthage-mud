@@ -228,7 +228,7 @@ async fn session_loop(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedR
                             GameEvent::Message(s) => send(writer, &s).await?,
                             GameEvent::EntitySaid(_, name, msg) => send(writer, &format!("{name} says: {msg}")).await?,
                             GameEvent::EntityEmoted(_, name, msg) => send(writer, &format!("{name} {msg}")).await?,
-                            GameEvent::CyclePhaseChanged(_, _, announcement) => {
+                            GameEvent::Scheduler(_, _, announcement) => {
                                 if let Some(a) = announcement {
                                     send(writer, &a).await?;
                                 }
