@@ -19,7 +19,6 @@ RUN touch src/main.rs && cargo build --release
 FROM debian:bookworm-slim
 WORKDIR /app
 COPY --from=builder /app/target/release/fourthage-mud .
-COPY $MUD_DATA_DIR ./data
 ENV MUD_DATA_DIR=./data
 
 CMD ["./fourthage-mud"]
