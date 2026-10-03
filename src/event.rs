@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use tokio::sync::mpsc::{self, error::SendError};
 use parking_lot::Mutex;
 
-use crate::{entities::{Location}, model::ids::EntityId};
+use crate::{entities::{Location, Name}, model::ids::EntityId};
 
 #[derive(Debug)]
 pub enum EventTarget {
@@ -17,32 +17,37 @@ pub enum EventTarget {
 
 #[derive(Clone, Debug)]
 pub enum GameEvent {
-    NpcEntered(EntityId),
-    NpcLeft(EntityId),
+    EntityEntered(EntityId),
+    EntityLeft(EntityId),
 
     Message(String),
     
-    /// name, message
-    PlayerSaid(String, String),
+    /// id, name, message
+    EntitySaid(EntityId, Name, String),
+
+    /// id, name, emote
+    EntityEmoted(EntityId, Name, String),
 
     SessionEnded,
 }
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum EventType {
-    NpcEntered,
-    NpcLeft,
+    EntityEntered,
+    EntityLeft,
     Message,
-    PlayerSaid,
+    EntitySaid,
+    EntityEmoted,
     SessionEnded
 }
 
 impl From<&GameEvent> for EventType {
     fn from(event: &GameEvent) -> Self {
         match event {
-            GameEvent::NpcEntered(_) => EventType::NpcEntered,
-            GameEvent::NpcLeft(_) => EventType::NpcLeft,
+            GameEvent::EntityEntered(_) => EventType::EntityEntered,
+            GameEvent::EntityLeft(_) => EventType::EntityLeft,
             GameEvent::Message(_) => EventType::Message,
-            GameEvent::PlayerSaid(_, _) => EventType::PlayerSaid,
+            GameEvent::EntitySaid(_, _, _) => EventType::EntitySaid,
+            GameEvent::EntityEmoted(_, _, _) => EventType::EntityEmoted,
             GameEvent::SessionEnded => EventType::SessionEnded
         }
     }
@@ -51,10 +56,11 @@ impl From<&GameEvent> for EventType {
 impl ToString for EventType {
     fn to_string(&self) -> String {
         match self {
-            EventType::NpcEntered => "npc_entered".to_string(),
-            EventType::NpcLeft => "npc_left".to_string(),
+            EventType::EntityEntered => "entity_entered".to_string(),
+            EventType::EntityLeft => "entity_left".to_string(),
             EventType::Message => "message".to_string(),
-            EventType::PlayerSaid => "player_said".to_string(),
+            EventType::EntitySaid => "entity_said".to_string(),
+            EventType::EntityEmoted => "entity_emoted".to_string(),
             EventType::SessionEnded => "session_ended".to_string()
         }
     }
@@ -65,8 +71,11 @@ impl FromStr for EventType {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
+            "entity_entered" => Ok(EventType::EntityEntered),
+            "entity_left" => Ok(EventType::EntityLeft),
             "message" => Ok(EventType::Message),
-            "player_said" => Ok(EventType::PlayerSaid),
+            "entity_said" => Ok(EventType::EntitySaid),
+            "entity_emoted" => Ok(EventType::EntityEmoted),
             "session_ended" => Ok(EventType::SessionEnded),
             _ => Err(())
         }

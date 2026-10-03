@@ -110,7 +110,7 @@ impl RoomGraph {
         write.rooms.insert(id, Arc::new(room));
     }
 
-    pub fn rooms(&self) -> MappedRwLockReadGuard<RawRwLock, HashMap<RoomId, Arc<RoomGraphNode>>> {
+    pub fn rooms(&'_ self) -> MappedRwLockReadGuard<'_, RawRwLock, HashMap<RoomId, Arc<RoomGraphNode>>> {
         RwLockReadGuard::map(self.inner.read(), |inner| &inner.rooms)
     }
 }
