@@ -4,11 +4,12 @@ use async_trait::async_trait;
 use parking_lot::Mutex;
 use tokio::sync::mpsc::{self, error::TryRecvError};
 
-use crate::{entities::{AiBehavior, EntityRegistry, Location, Name}, event::{Event, EventTarget, EventTargetResolver, GameEvent}, model::{ids::{EntityId, RoomId}, rooms::Direction}, script::{ScriptEngine, ScriptError, ScriptEvent, ScriptNpc}, system::{System, SystemContext, SystemError}, world_ops};
+use crate::{entities::{AiBehavior, EntityRegistry, Location, Name}, event::{Event, EventTarget, EventTargetResolver, GameEvent}, model::{ids::{EntityId, RoomId}, rooms::{Direction, RoomGraph}}, script::{ScriptEngine, ScriptError, ScriptEvent, ScriptNpc}, system::{System, SystemContext, SystemError}, world_ops};
 
 pub struct BehaviorContext {
     entity: EntityId,
     entity_registry: Arc<EntityRegistry>,
+    room_graph: Arc<RoomGraph>,
     events: Vec<GameEvent>
 }
 
@@ -40,7 +41,7 @@ pub struct ScriptBehavior {
 
 impl Behavior for ScriptBehavior {
     fn on_tick(&self, ctx: BehaviorContext) -> Result<Vec<BehaviorAction>, BehaviorError> {
-        let npc = Arc::new(ScriptNpc::new(ctx.entity, ctx.entity_registry));
+        let npc = Arc::new(ScriptNpc::new(ctx.entity, ctx.entity_registry, ctx.room_graph));
 
         let events: Vec<Arc<ScriptEvent>> = ctx.events
             .into_iter()
@@ -124,7 +125,7 @@ impl System for BehaviorSystem {
                 let events = context.entities().events(&entity)?;
 
                 tracing::debug!("Processing behavior for entity {} (events: {:?})", entity, events);
-                let behavior_context = BehaviorContext { entity, entity_registry: context.entities().clone(), events };
+                let behavior_context = BehaviorContext { entity, entity_registry: context.entities().clone(), events, room_graph: context.rooms().clone() };
                 match behavior.on_tick(behavior_context) {
                     Ok(actions) => {
                         let mut events = Vec::new();

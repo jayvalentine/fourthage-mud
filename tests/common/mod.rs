@@ -83,6 +83,7 @@ impl TestClient {
     }
 
     pub async fn send(&mut self, message: &str) {
+        tracing::debug!("Sending message: {message}");
         self.writer.write_all(message.as_bytes()).await
             .expect("Failed to send message");
         self.writer.write_all(b"\r\n").await

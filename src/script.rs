@@ -7,10 +7,10 @@ use mlua::{FromLuaMulti, Function, IntoLuaMulti, Lua, LuaOptions, RegistryKey, S
 use parking_lot::Mutex;
 
 use crate::behavior::BehaviorAction;
-use crate::entities::{AiMemory, AiMemoryValue, EntityRegistry, EntityRegistryError};
+use crate::entities::{AiMemory, AiMemoryValue, EntityRegistry, EntityRegistryError, Location};
 use crate::event::{EventType, GameEvent};
-use crate::model::ids::EntityId;
-use crate::model::rooms::Direction;
+use crate::model::ids::{Alias, EntityId, RoomId};
+use crate::model::rooms::{Direction, RoomGraph};
 
 #[derive(Debug)]
 pub enum ScriptError {
@@ -125,14 +125,16 @@ impl ScriptEngine {
 pub struct ScriptNpc {
     entity: EntityId,
     entity_registry: Arc<EntityRegistry>,
+    room_graph: Arc<RoomGraph>,
     actions: Mutex<Vec<BehaviorAction>>
 }
 
 impl ScriptNpc {
-    pub fn new(entity: EntityId, entity_registry: Arc<EntityRegistry>) -> ScriptNpc {
+    pub fn new(entity: EntityId, entity_registry: Arc<EntityRegistry>, room_graph: Arc<RoomGraph>) -> ScriptNpc {
         ScriptNpc {
             entity,
             entity_registry,
+            room_graph,
             actions: Mutex::new(Vec::new())
         }
     }
@@ -222,6 +224,26 @@ impl UserData for ScriptNpc {
             Ok(())
         });
 
+        methods.add_method("get_memory_strs", |_, this, args: (String, Vec<String>)| {
+            let key = args.0;
+            let default = args.1;
+
+            let memory_value = match ScriptNpc::get_memory::<Vec<String>>(this, &key, default)? {
+                Some(m) => m,
+                None => return Err(RuntimeError(format!("Unexpected type in memory for key: {key}")))
+            };
+
+            Ok(memory_value)
+        });
+
+        methods.add_method("set_memory_strs", |_, this, args: (String, Vec<String>)| {
+            let key = args.0;
+            let value = args.1;
+
+            ScriptNpc::set_memory::<Vec<String>>(this, key, value)?;
+            Ok(())
+        });
+
         methods.add_method("get_memory_int", |_, this, args: (String, i64)| {
             let key = args.0;
             let default = args.1;
@@ -241,6 +263,31 @@ impl UserData for ScriptNpc {
             ScriptNpc::set_memory::<i64>(this, key, value)?;
             Ok(())
         });
+
+        methods.add_method("current_location", |_, this, ()| {
+            let loc = this.entity_registry.get_component::<Location>(&this.entity)?;
+            let alias = match loc {
+                Some(l) => Some(this.entity_registry.get_alias(&l.value)?),
+                None => None
+            };
+            Ok(alias.map(|a| a.to_string()))
+        });
+
+        methods.add_method("get_route", |_, this, (from, to): (String, String)| {
+            let from = Alias::from(from);
+            let to = Alias::from(to);
+
+            let from = this.entity_registry.resolve_alias(&from)
+                .ok_or(RuntimeError(format!("Could not resolve alias '{from}'")))?;
+            let to = this.entity_registry.resolve_alias(&to)
+                .ok_or(RuntimeError(format!("Could not resolve alias '{to}'")))?;
+
+            
+            let directions = this.room_graph.get_directions(RoomId::from_entity(from), RoomId::from_entity(to))
+                .map_err(|e| RuntimeError(format!("Could not get directions: {e:?}")))?;
+            let directions: Vec<String> = directions.iter().map(|d| d.to_string()).collect();
+            Ok(directions)
+        })
     }
 }
 

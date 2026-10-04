@@ -563,7 +563,8 @@ pub struct AiMemory {
 #[derive(Clone, Debug)]
 pub enum AiMemoryValue {
     Integer(i64),
-    String(String)
+    String(String),
+    VecString(Vec<String>)
 }
 
 impl From<AiMemoryValue> for Option<String> {
@@ -593,6 +594,21 @@ impl From<AiMemoryValue> for Option<i64> {
 impl From<i64> for AiMemoryValue {
     fn from(value: i64) -> Self {
         AiMemoryValue::Integer(value)
+    }
+}
+
+impl From<AiMemoryValue> for Option<Vec<String>> {
+    fn from(value: AiMemoryValue) -> Self {
+        match value {
+            AiMemoryValue::VecString(v) => Some(v),
+            _ => None
+        }
+    }
+}
+
+impl From<Vec<String>> for AiMemoryValue {
+    fn from(value: Vec<String>) -> Self {
+        AiMemoryValue::VecString(value)
     }
 }
 
