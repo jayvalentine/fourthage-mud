@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
+use futures_util::StreamExt;
 use sqlx::PgPool;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
-use tokio::io::{AsyncWriteExt, AsyncBufReadExt, BufReader};
+use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
+use tokio_util::codec::{FramedRead, LinesCodec};
 
 use crate::command::{Command, CommandExecutionError, CommandParseError, CommandResult, handle_command};
 use crate::entities::{EntityRegistry, EntityRegistryError, Name, Player, Location};
@@ -114,18 +116,17 @@ async fn send(writer: &mut OwnedWriteHalf, s: &str) -> Result<(), SessionError> 
 /// Blocks until a complete line is received.
 ///
 /// Returns `Ok(None)` on EOF.
-async fn recv(reader: &mut BufReader<OwnedReadHalf>) -> Result<Option<String>, SessionError> {
-    let mut line = String::new();
-    match reader.read_line(&mut line).await {
-        Ok(0) => Ok(None),
-        Ok(_) => Ok(Some(line.trim().into())),
-        Err(_) => Err(SessionError::Recv)
+async fn recv(reader: &mut FramedRead<OwnedReadHalf, LinesCodec>) -> Result<Option<String>, SessionError> {
+    match reader.next().await {
+        Some(Ok(s)) => Ok(Some(s)),
+        Some(Err(_)) => Err(SessionError::Recv),
+        None => Ok(None)
     }
 }
 
 /// Get the initial password from the player (on account creation).
 /// Prompts the user to confirm the password and only exits once a valid confirmation is made.
-async fn get_initial_password(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedReadHalf>) -> Result<Option<String>, SessionError> {
+async fn get_initial_password(writer: &mut OwnedWriteHalf, reader: &mut FramedRead<OwnedReadHalf, LinesCodec>) -> Result<Option<String>, SessionError> {
     loop {
         send(writer, "New account; enter your password:").await?;
         let initial_password = match recv(reader).await? {
@@ -185,13 +186,13 @@ async fn handle_input(session_context: &mut SessionContext, input: &str) -> Resu
     Ok(response)
 }
 
-async fn session_loop(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedReadHalf>, session_context: &mut SessionContext) -> Result<(), SessionError> {
+async fn session_loop(writer: &mut OwnedWriteHalf, reader: &mut FramedRead<OwnedReadHalf, LinesCodec>, session_context: &mut SessionContext) -> Result<(), SessionError> {
     loop {
         tokio::select! {
             line = recv(reader) => {
                 match line {
                     Ok(Some(input)) => {
-                        tracing::debug!("Handling command from player '{}': {}", session_context.player_id, input);
+                        tracing::debug!("Handling command from player '{}': '{}'", session_context.player_id, input);
                         
                         let response = handle_input(session_context, &input).await?;
                         if let Some(s) = response {
@@ -253,7 +254,7 @@ async fn session_loop(writer: &mut OwnedWriteHalf, reader: &mut BufReader<OwnedR
 /// Execute the game loop for the given session.
 async fn run_internal(
     writer: &mut OwnedWriteHalf,
-    reader: &mut BufReader<OwnedReadHalf>,
+    reader: &mut FramedRead<OwnedReadHalf, LinesCodec>,
     pool: PgPool,
     world: Arc<RoomGraph>,
     event_bus: Arc<EventBus>,
@@ -312,7 +313,7 @@ async fn run_internal(
 
 pub async fn run(
     writer: &mut OwnedWriteHalf,
-    reader: &mut BufReader<OwnedReadHalf>,
+    reader: &mut FramedRead<OwnedReadHalf, LinesCodec>,
     pool: PgPool,
     world: Arc<RoomGraph>,
     event_bus: Arc<EventBus>,

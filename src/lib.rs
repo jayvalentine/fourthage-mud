@@ -4,7 +4,6 @@ use std::time::Duration;
 use parking_lot::Mutex;
 use sqlx::PgPool;
 use tokio::net::TcpListener;
-use tokio::io::BufReader;
 
 mod model;
 mod command;
@@ -27,6 +26,7 @@ use event::EventBus;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot::Receiver;
 use tokio::time::{Instant, interval, MissedTickBehavior};
+use tokio_util::codec::{FramedRead, LinesCodec};
 
 use crate::behavior::{BehaviorRegistry, BehaviorSystem};
 use crate::entities::{EntityRegistry, EventHandler, Npc};
@@ -95,7 +95,7 @@ async fn accept_loop(listener: TcpListener, world: Arc<RoomGraph>, pool: sqlx::P
 
                 tokio::spawn(async move {
                     let (reader, mut writer) = socket.into_split();
-                    let mut reader = BufReader::new(reader);
+                    let mut reader = FramedRead::new(reader, LinesCodec::new());
 
                     session::run(&mut writer, &mut reader, pool, world, event_bus, entities, starting_room).await.unwrap_or_else(|e| {
                         tracing::error!("Error during session from {addr}: {e:?}");
