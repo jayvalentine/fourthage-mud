@@ -37,6 +37,7 @@ async fn test_npc_memory(pool: PgPool) {
     assert!(response.contains("You say: remember foo"));
 
     let response = client.send_with_response("say recall").await;
+    tracing::debug!(response);
     assert!(response.contains("You say: recall"));
     assert!(response.contains("remembered: foo"));
 }
@@ -56,4 +57,21 @@ async fn test_npc_movement(pool: PgPool) {
     let messages = client.recv().await;
     assert!(messages.contains("Moving Test NPC arrived."));
     assert!(messages.contains("Moving Test NPC left."));
+}
+
+/// Verifies that NPC scripts can use pathfinding.
+#[sqlx::test(migrations = "./migrations")]
+async fn test_npc_pathfinding(pool: PgPool) {
+    create_test_account(&pool, "player", "password", false).await.expect("player1 account creation failed");
+
+    let server = TestServer::start(&pool).await;
+
+    let mut client = server.connect_as("player", "password").await;
+
+    // Wait some time, assert that the NPC has left and returned.
+    // The NPC should move once per tick.
+    sleep(Duration::from_secs(5)).await;
+    let messages = client.recv().await;
+    assert!(messages.contains("Pathfinding Test NPC arrived."));
+    assert!(messages.contains("Pathfinding Test NPC left."));
 }

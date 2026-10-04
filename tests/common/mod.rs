@@ -1,9 +1,11 @@
 #![allow(dead_code)]
 
+use futures_util::StreamExt;
 use sqlx::{ConnectOptions, PgPool};
 use tokio::net::TcpListener;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::task::JoinHandle;
+use tokio_util::codec::{FramedRead, LinesCodec};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -48,7 +50,7 @@ async fn wait_for_port(addr: &str, timeout: Duration) -> std::io::Result<()> {
 }
 
 pub struct TestClient {
-    reader: BufReader<OwnedReadHalf>,
+    reader: FramedRead<OwnedReadHalf, LinesCodec>,
     writer: OwnedWriteHalf
 }
 
@@ -56,7 +58,7 @@ impl TestClient {
     pub async fn connect(addr: &SocketAddr) -> Self {
         let stream = TcpStream::connect(addr).await.expect("Failed to connect to server");
         let (reader, writer) = stream.into_split();
-        let reader = BufReader::new(reader);
+        let reader = FramedRead::new(reader, LinesCodec::new());
         TestClient { reader, writer }
     }
 
@@ -68,21 +70,21 @@ impl TestClient {
     pub async fn recv(&mut self) -> String {
         let mut response = String::new();
         loop {
-            let mut line = String::new();
             match tokio::time::timeout(
                 Duration::from_millis(1000),
-                self.reader.read_line(&mut line)
+                self.reader.next()
             ).await {
-                Ok(Ok(0)) => break,  // connection closed
-                Ok(Ok(_)) => response.push_str(&line),
-                Ok(Err(e)) => panic!("Error reading response: {e}"),
-                Err(_) => break,  // timeout - assume response complete
+                Ok(Some(Ok(s))) => response.push_str(&s),
+                Ok(Some(Err(e))) => panic!("Error reading response: {e}"),
+                Ok(None) => break, // connection closed
+                Err(_) => break,   // timeout - assume response complete
             }
         }
         response.trim().to_string()
     }
 
     pub async fn send(&mut self, message: &str) {
+        tracing::debug!("Sending message: {message}");
         self.writer.write_all(message.as_bytes()).await
             .expect("Failed to send message");
         self.writer.write_all(b"\r\n").await

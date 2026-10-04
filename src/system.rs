@@ -48,7 +48,7 @@ impl SystemContext {
         &self.registry
     }
 
-    pub fn rooms(&self) -> &RoomGraph {
+    pub fn rooms(&self) -> &Arc<RoomGraph> {
         &self.rooms
     }
 

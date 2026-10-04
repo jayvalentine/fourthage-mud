@@ -11,3 +11,9 @@
   description: 'An NPC for movement testing purposes.'
   spawn_location: starting_room
   behavior_template: 'scripts/test_moving.lua'
+00000000-0000-0000-0000-000000000006:
+  alias: npc:test_pathfinding
+  name: 'Pathfinding Test NPC'
+  description: 'An NPC for pathfinding testing purposes.'
+  spawn_location: south_room
+  behavior_template: 'scripts/test_pathfinding.lua'
