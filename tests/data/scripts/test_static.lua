@@ -1,6 +1,6 @@
 local M = {}
 
-function M.on_tick(npc, events)
+function M.on_tick(npc, events, context)
     for _, event in ipairs(events) do
         local kind = event:type()
 

@@ -140,19 +140,48 @@ fn lua_to_dynamic_value(value: Value) -> Result<DynamicValue, mlua::Error> {
     }
 }
 
+pub struct ScriptContext {
+    entities: Arc<EntityRegistry>,
+    room_graph: Arc<RoomGraph>
+}
+
+impl ScriptContext {
+    pub fn new(entities: Arc<EntityRegistry>, room_graph: Arc<RoomGraph>) -> ScriptContext {
+        ScriptContext { entities, room_graph }
+    }
+}
+
+impl UserData for ScriptContext {
+    fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_method("get_route", |_, this, (from, to): (String, String)| {
+            let from = Alias::from(from);
+            let to = Alias::from(to);
+
+            let from = this.entities.resolve_alias(&from)
+                .ok_or(RuntimeError(format!("Could not resolve alias '{from}'")))?;
+            let to = this.entities.resolve_alias(&to)
+                .ok_or(RuntimeError(format!("Could not resolve alias '{to}'")))?;
+
+            
+            let directions = this.room_graph.get_directions(RoomId::from_entity(from), RoomId::from_entity(to))
+                .map_err(|e| RuntimeError(format!("Could not get directions: {e:?}")))?;
+            let directions: Vec<String> = directions.iter().map(|d| d.to_string()).collect();
+            Ok(directions)
+        })
+    }
+}
+
 pub struct ScriptNpc {
     entity: EntityId,
     entity_registry: Arc<EntityRegistry>,
-    room_graph: Arc<RoomGraph>,
     actions: Mutex<Vec<BehaviorAction>>
 }
 
 impl ScriptNpc {
-    pub fn new(entity: EntityId, entity_registry: Arc<EntityRegistry>, room_graph: Arc<RoomGraph>) -> ScriptNpc {
+    pub fn new(entity: EntityId, entity_registry: Arc<EntityRegistry>) -> ScriptNpc {
         ScriptNpc {
             entity,
             entity_registry,
-            room_graph,
             actions: Mutex::new(Vec::new())
         }
     }
@@ -219,22 +248,6 @@ impl UserData for ScriptNpc {
             };
             Ok(alias.map(|a| a.to_string()))
         });
-
-        methods.add_method("get_route", |_, this, (from, to): (String, String)| {
-            let from = Alias::from(from);
-            let to = Alias::from(to);
-
-            let from = this.entity_registry.resolve_alias(&from)
-                .ok_or(RuntimeError(format!("Could not resolve alias '{from}'")))?;
-            let to = this.entity_registry.resolve_alias(&to)
-                .ok_or(RuntimeError(format!("Could not resolve alias '{to}'")))?;
-
-            
-            let directions = this.room_graph.get_directions(RoomId::from_entity(from), RoomId::from_entity(to))
-                .map_err(|e| RuntimeError(format!("Could not get directions: {e:?}")))?;
-            let directions: Vec<String> = directions.iter().map(|d| d.to_string()).collect();
-            Ok(directions)
-        })
     }
 }
 

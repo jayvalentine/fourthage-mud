@@ -1,6 +1,6 @@
 local M = {}
 
-function M.on_tick(npc, events)
+function M.on_tick(npc, events, context)
     local wait_time = npc:get_memory("wait_time", 0)
     if wait_time == 0 then
         local direction = npc:get_memory("direction", "north")
