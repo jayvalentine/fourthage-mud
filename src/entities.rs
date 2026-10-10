@@ -3,7 +3,7 @@ use std::{any::TypeId, collections::{HashMap, HashSet}, hash::Hash};
 use parking_lot::RwLock;
 use fourthage_mud_macros::ComponentStorage;
 
-use crate::{event::{EventTarget, EventTargetResolver, EventType, GameEvent}, model::ids::{Alias, EntityId}};
+use crate::{event::{EventTarget, EventTargetResolver, EventType, GameEvent}, model::{ids::{Alias, EntityId}, values::DynamicValue}};
 
 struct LocationMap {
     location_by_id: HashMap<EntityId, Location>,
@@ -71,7 +71,7 @@ struct EntityRegistryInternal {
     items: HashMap<EntityId, Item>,
     npcs: HashMap<EntityId, Npc>,
     ai_behaviors: HashMap<EntityId, AiBehavior>,
-    ai_memories: HashMap<EntityId, AiMemory>,
+    memories: HashMap<EntityId, Memory>,
     event_handlers: HashMap<EntityId, EventHandler>,
 
     dirty: HashMap<TypeId, HashSet<EntityId>>
@@ -108,7 +108,7 @@ impl EntityRegistry {
             items: HashMap::new(),
             npcs: HashMap::new(),
             ai_behaviors: HashMap::new(),
-            ai_memories: HashMap::new(),
+            memories: HashMap::new(),
             event_handlers: HashMap::new(),
             dirty: HashMap::new()
         };
@@ -555,75 +555,23 @@ impl EventHandler {
 }
 
 #[derive(Clone, ComponentStorage)]
-#[component(field = "ai_memories")]
-pub struct AiMemory {
-    values: HashMap<String, AiMemoryValue>
+#[component(field = "memories")]
+pub struct Memory {
+    values: HashMap<String, DynamicValue>
 }
 
-#[derive(Clone, Debug)]
-pub enum AiMemoryValue {
-    Integer(i64),
-    String(String),
-    VecString(Vec<String>)
-}
-
-impl From<AiMemoryValue> for Option<String> {
-    fn from(value: AiMemoryValue) -> Self {
-        match value {
-            AiMemoryValue::String(s) => Some(s.to_string()),
-            _ => None
-        }
-    }
-}
-
-impl From<String> for AiMemoryValue {
-    fn from(value: String) -> Self {
-        AiMemoryValue::String(value)
-    }
-}
-
-impl From<AiMemoryValue> for Option<i64> {
-    fn from(value: AiMemoryValue) -> Self {
-        match value {
-            AiMemoryValue::Integer(i) => Some(i),
-            _ => None
-        }
-    }
-}
-
-impl From<i64> for AiMemoryValue {
-    fn from(value: i64) -> Self {
-        AiMemoryValue::Integer(value)
-    }
-}
-
-impl From<AiMemoryValue> for Option<Vec<String>> {
-    fn from(value: AiMemoryValue) -> Self {
-        match value {
-            AiMemoryValue::VecString(v) => Some(v),
-            _ => None
-        }
-    }
-}
-
-impl From<Vec<String>> for AiMemoryValue {
-    fn from(value: Vec<String>) -> Self {
-        AiMemoryValue::VecString(value)
-    }
-}
-
-impl AiMemory {
-    pub fn new() -> AiMemory {
-        AiMemory {
+impl Memory {
+    pub fn new() -> Memory {
+        Memory {
             values: HashMap::new()
         }
     }
 
-    pub fn get(&self, key: &str) -> Option<&AiMemoryValue> {
+    pub fn get(&self, key: &str) -> Option<&DynamicValue> {
         self.values.get(key)
     }
 
-    pub fn insert(&mut self, key: String, value: AiMemoryValue) {
+    pub fn insert(&mut self, key: String, value: DynamicValue) {
         self.values.insert(key, value);
     }
 }

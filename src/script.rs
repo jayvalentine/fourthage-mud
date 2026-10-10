@@ -3,14 +3,15 @@ use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use mlua::Error::RuntimeError;
-use mlua::{FromLuaMulti, Function, IntoLuaMulti, Lua, LuaOptions, RegistryKey, StdLib, UserData};
+use mlua::{FromLuaMulti, Function, IntoLuaMulti, Lua, LuaOptions, RegistryKey, StdLib, UserData, Value};
 use parking_lot::Mutex;
 
 use crate::behavior::BehaviorAction;
-use crate::entities::{AiMemory, AiMemoryValue, EntityRegistry, EntityRegistryError, Location};
+use crate::entities::{Memory, EntityRegistry, EntityRegistryError, Location};
 use crate::event::{EventType, GameEvent};
 use crate::model::ids::{Alias, EntityId, RoomId};
 use crate::model::rooms::{Direction, RoomGraph};
+use crate::model::values::DynamicValue;
 
 #[derive(Debug)]
 pub enum ScriptError {
@@ -122,6 +123,23 @@ impl ScriptEngine {
     }
 }
 
+fn dynamic_value_to_lua(lua: &'_ Lua, value: DynamicValue) -> Result<Value<'_>, mlua::Error> {
+    match value {
+        DynamicValue::String(s) => Ok(Value::String(lua.create_string(&s)?)),
+        DynamicValue::Integer(i) => Ok(Value::Integer(i))
+    }
+}
+
+fn lua_to_dynamic_value(value: Value) -> Result<DynamicValue, mlua::Error> {
+    match value {
+        Value::String(s) => Ok(DynamicValue::String(s.to_str()?.to_string())),
+        Value::Integer(i) => Ok(DynamicValue::Integer(i)),
+
+        Value::Nil => Err(RuntimeError("Cannot store nil in memory".into())),
+        _ => Err(RuntimeError("Unsupported type for memory storage".into()))
+    }
+}
+
 pub struct ScriptNpc {
     entity: EntityId,
     entity_registry: Arc<EntityRegistry>,
@@ -142,40 +160,6 @@ impl ScriptNpc {
     pub fn actions(&self) -> Vec<BehaviorAction> {
         let mut actions = self.actions.lock();
         actions.drain(0..).collect()
-    }
-
-    /// Return the value in memory with given key and type.
-    ///
-    /// Returns default if no value exists with that key.
-    /// Returns None if the value exists but is the wrong type.
-    fn get_memory<T>(this: &ScriptNpc, key: &str, default: T) -> Result<Option<T>, EntityRegistryError>
-        where Option<T>: From<AiMemoryValue>
-    {
-        let memory_value: Option<T> = if let Some(memory) = this.entity_registry.get_component::<AiMemory>(&this.entity)?
-        {
-            if let Some(value) = memory.get(key) {
-                value.clone().into()
-            } else {
-                Some(default)
-            }
-        } else {
-            Some(default)
-        };
-
-        Ok(memory_value)
-    }
-
-    fn set_memory<T>(this: &ScriptNpc, key: String, value: T) -> Result<(), EntityRegistryError>
-        where T: Into<AiMemoryValue>
-    {
-        let mut memory = match this.entity_registry.get_component::<AiMemory>(&this.entity)? {
-            Some(m) => m,
-            None => AiMemory::new()
-        };
-
-        memory.insert(key, value.into());
-
-        this.entity_registry.update_component(&this.entity, memory)
     }
 }
 
@@ -204,63 +188,26 @@ impl UserData for ScriptNpc {
             Ok(())
         });
 
-        methods.add_method("get_memory_str", |_, this, args: (String, String)| {
-            let key = args.0;
-            let default = args.1;
+        methods.add_method("get_memory", |lua, this, (key, default): (String, Value)| {
+            let memory = this.entity_registry.get_component::<Memory>(&this.entity)?;
+            let value = memory.and_then(|m| m.get(&key).cloned());
 
-            let memory_value = match ScriptNpc::get_memory::<String>(this, &key, default)? {
+            match value {
+                Some(v) => dynamic_value_to_lua(lua, v),
+                None => Ok(default)
+            }
+        });
+
+        methods.add_method("set_memory", |_, this, (key, value): (String, Value)| {
+            let mut memory = match this.entity_registry.get_component::<Memory>(&this.entity)? {
                 Some(m) => m,
-                None => return Err(RuntimeError(format!("Unexpected type in memory for key: {key}")))
+                None => Memory::new()
             };
 
-            Ok(memory_value)
-        });
+            memory.insert(key, lua_to_dynamic_value(value)?);
 
-        methods.add_method("set_memory_str", |_, this, args: (String, String)| {
-            let key = args.0;
-            let value = args.1;
+            this.entity_registry.update_component(&this.entity, memory)?;
 
-            ScriptNpc::set_memory::<String>(this, key, value)?;
-            Ok(())
-        });
-
-        methods.add_method("get_memory_strs", |_, this, args: (String, Vec<String>)| {
-            let key = args.0;
-            let default = args.1;
-
-            let memory_value = match ScriptNpc::get_memory::<Vec<String>>(this, &key, default)? {
-                Some(m) => m,
-                None => return Err(RuntimeError(format!("Unexpected type in memory for key: {key}")))
-            };
-
-            Ok(memory_value)
-        });
-
-        methods.add_method("set_memory_strs", |_, this, args: (String, Vec<String>)| {
-            let key = args.0;
-            let value = args.1;
-
-            ScriptNpc::set_memory::<Vec<String>>(this, key, value)?;
-            Ok(())
-        });
-
-        methods.add_method("get_memory_int", |_, this, args: (String, i64)| {
-            let key = args.0;
-            let default = args.1;
-
-            let memory_value = match ScriptNpc::get_memory::<i64>(this, &key, default)? {
-                Some(m) => m,
-                None => return Err(RuntimeError(format!("Unexpected type in memory for key: {key}")))
-            };
-
-            Ok(memory_value)
-        });
-
-        methods.add_method("set_memory_int", |_, this, args: (String, i64)| {
-            let key = args.0;
-            let value = args.1;
-
-            ScriptNpc::set_memory::<i64>(this, key, value)?;
             Ok(())
         });
 
