@@ -17,3 +17,12 @@
   description: 'An NPC for pathfinding testing purposes.'
   spawn_location: south_room
   behavior_template: 'scripts/test_pathfinding.lua'
+00000000-0000-0000-0000-000000000008:
+  alias: npc:test_param
+  name: 'Param Test NPC'
+  description: 'An NPC for param testing purposes.'
+  spawn_location: starting_room
+  behavior_template: 'scripts/test_param.lua'
+  event_subs: [entity_said]
+  params:
+    response: this is the parameter value

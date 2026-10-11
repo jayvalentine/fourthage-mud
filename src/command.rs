@@ -3,7 +3,7 @@ use std::fmt;
 
 use crate::data::{ItemData, NpcData, RoomData};
 use crate::db::DatabaseError;
-use crate::entities::{AiBehavior, Description, EntityRegistryError, EventHandler, Item, Location, Name, Npc, Player, SpawnLocation};
+use crate::entities::{AiBehavior, Description, EntityRegistryError, EventHandler, Item, Location, Name, Npc, Params, Player, SpawnLocation};
 use crate::event::{Event, EventTarget, GameEvent};
 use crate::model::rooms::{DirectionParseError, RoomGraphNode};
 use crate::model::{rooms::Direction, ids::{EntityId, RoomId, Alias}};
@@ -663,13 +663,18 @@ fn handle_save(context: &SessionContext, target: SaveTarget, path: String) -> Re
                     Some(h) => Some(h.subs().iter().map(|s| s.to_string()).collect()),
                     None => None
                 };
+                let params = match context.entities.get_component::<Params>(&e)? {
+                    Some(p) => Some(p.values()),
+                    None => None
+                };
                 npc_data.insert(e, NpcData {
                     alias: alias.clone(),
                     name,
                     description,
                     spawn_location: room_alias,
                     behavior_template,
-                    event_subs
+                    event_subs,
+                    params
                 });
             }
 

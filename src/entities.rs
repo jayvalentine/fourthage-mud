@@ -72,6 +72,7 @@ struct EntityRegistryInternal {
     npcs: HashMap<EntityId, Npc>,
     ai_behaviors: HashMap<EntityId, AiBehavior>,
     memories: HashMap<EntityId, Memory>,
+    params: HashMap<EntityId, Params>,
     event_handlers: HashMap<EntityId, EventHandler>,
 
     dirty: HashMap<TypeId, HashSet<EntityId>>
@@ -109,6 +110,7 @@ impl EntityRegistry {
             npcs: HashMap::new(),
             ai_behaviors: HashMap::new(),
             memories: HashMap::new(),
+            params: HashMap::new(),
             event_handlers: HashMap::new(),
             dirty: HashMap::new()
         };
@@ -573,6 +575,26 @@ impl Memory {
 
     pub fn insert(&mut self, key: String, value: DynamicValue) {
         self.values.insert(key, value);
+    }
+}
+
+#[derive(Clone, ComponentStorage)]
+#[component(field = "params")]
+pub struct Params {
+    values: HashMap<String, DynamicValue>
+}
+
+impl Params {
+    pub fn new(values: HashMap<String, DynamicValue>) -> Params {
+        Params { values }
+    }
+
+    pub fn get(&self, key: &str) -> Option<&DynamicValue> {
+        self.values.get(key)
+    }
+
+    pub fn values(self) -> HashMap<String, DynamicValue> {
+        self.values
     }
 }
 

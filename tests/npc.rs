@@ -75,3 +75,16 @@ async fn test_npc_pathfinding(pool: PgPool) {
     assert!(messages.contains("Pathfinding Test NPC arrived."));
     assert!(messages.contains("Pathfinding Test NPC left."));
 }
+
+/// Verifies that NPC scripts can use parameters.
+#[sqlx::test(migrations = "./migrations")]
+async fn test_npc_params(pool: PgPool) {
+    create_test_account(&pool, "player", "password", false).await.expect("player1 account creation failed");
+
+    let server = TestServer::start(&pool).await;
+
+    let mut client = server.connect_as("player", "password").await;
+
+    let response = client.send_with_response("say test param").await;
+    assert!(response.contains("Param Test NPC says: this is the parameter value"));
+}

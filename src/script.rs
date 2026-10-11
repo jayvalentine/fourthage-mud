@@ -7,7 +7,7 @@ use mlua::{FromLuaMulti, Function, IntoLuaMulti, Lua, LuaOptions, RegistryKey, S
 use parking_lot::Mutex;
 
 use crate::behavior::BehaviorAction;
-use crate::entities::{Memory, EntityRegistry, EntityRegistryError, Location};
+use crate::entities::{EntityRegistry, EntityRegistryError, Location, Memory, Params};
 use crate::event::{EventType, GameEvent};
 use crate::model::ids::{Alias, EntityId, RoomId};
 use crate::model::rooms::{Direction, RoomGraph};
@@ -238,6 +238,16 @@ impl UserData for ScriptNpc {
             this.entity_registry.update_component(&this.entity, memory)?;
 
             Ok(())
+        });
+
+        methods.add_method("get_param", |lua, this, key: String| {
+            let params = this.entity_registry.get_component::<Params>(&this.entity)?;
+            let value = params.and_then(|m| m.get(&key).cloned());
+
+            match value {
+                Some(v) => dynamic_value_to_lua(lua, v),
+                None => Err(RuntimeError(format!("Entity has no parameter '{key}'")))
+            }
         });
 
         methods.add_method("current_location", |_, this, ()| {
