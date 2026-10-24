@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use parking_lot::Mutex;
 use tokio::sync::mpsc::{self, error::TryRecvError};
 
-use crate::{entities::{AiBehavior, EntityRegistry, Location, Name}, event::{Event, EventTarget, EventTargetResolver, GameEvent}, model::{ids::{EntityId, RoomId}, rooms::{Direction, RoomGraph}}, script::{ScriptEngine, ScriptError, ScriptEvent, ScriptNpc}, system::{System, SystemContext, SystemError}, world_ops};
+use crate::{entities::{AiBehavior, EntityRegistry, Location, Name}, event::{Event, EventTarget, EventTargetResolver, GameEvent}, model::{ids::{EntityId, RoomId}, rooms::{Direction, RoomGraph}}, script::{ScriptContext, ScriptEngine, ScriptError, ScriptEvent, ScriptNpc}, system::{System, SystemContext, SystemError}, world_ops};
 
 pub struct BehaviorContext {
     entity: EntityId,
@@ -41,14 +41,15 @@ pub struct ScriptBehavior {
 
 impl Behavior for ScriptBehavior {
     fn on_tick(&self, ctx: BehaviorContext) -> Result<Vec<BehaviorAction>, BehaviorError> {
-        let npc = Arc::new(ScriptNpc::new(ctx.entity, ctx.entity_registry, ctx.room_graph));
+        let npc = Arc::new(ScriptNpc::new(ctx.entity, ctx.entity_registry.clone()));
+        let context = Arc::new(ScriptContext::new(ctx.entity_registry.clone(), ctx.room_graph.clone()));
 
         let events: Vec<Arc<ScriptEvent>> = ctx.events
             .into_iter()
             .map(|e| Arc::new(ScriptEvent::from(e)))
             .collect();
 
-        self.engine.lock().call::<_, ()>(&self.script, "on_tick", (npc.clone(), events))?;
+        self.engine.lock().call::<_, ()>(&self.script, "on_tick", (npc.clone(), events, context.clone()))?;
 
         Ok(npc.actions())
     }

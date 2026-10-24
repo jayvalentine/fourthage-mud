@@ -2,7 +2,7 @@ use std::{collections::HashSet, path::Path, str::FromStr};
 
 use sqlx::PgPool;
 
-use crate::{data::{self, DataLoadError}, db::DatabaseError, entities::{AiBehavior, Description, EntityRegistry, EntityRegistryError, EventHandler, Item, Location, Name, Npc, SpawnLocation}, event::EventType, model::{ids::{Alias, RoomId}, rooms::{RoomGraph, RoomGraphNode}}, persistence};
+use crate::{data::{self, DataLoadError}, db::DatabaseError, entities::{AiBehavior, Description, EntityRegistry, EntityRegistryError, EventHandler, Item, Location, Name, Npc, Params, SpawnLocation}, event::EventType, model::{ids::{Alias, RoomId}, rooms::{RoomGraph, RoomGraphNode}}, persistence};
 
 #[derive(Debug)]
 pub enum SeedError {
@@ -167,6 +167,11 @@ impl Seeder for NpcSeeder {
                     }
                 }
                 entities.update_component(&id, EventHandler::new(subs_parsed))?;
+            }
+
+            if let Some(params) = npc.params {
+                let params = Params::new(params);
+                entities.update_component(&id, params)?;
             }
 
             seeded_count += 1;

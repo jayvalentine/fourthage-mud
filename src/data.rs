@@ -8,6 +8,7 @@ use uuid::Uuid;
 use crate::model::ids::{Alias, EntityId};
 use crate::model::ids::RoomId;
 use crate::model::rooms::Direction;
+use crate::model::values::DynamicValue;
 
 #[derive(Debug)]
 pub enum DataLoadError {
@@ -114,6 +115,32 @@ impl Serialize for EntityId {
     }
 }
 
+impl<'de> Deserialize<'de> for DynamicValue {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>
+    {
+        let s = String::deserialize(deserializer)?;
+        let v = match s.parse::<i64>() {
+            Ok(i) => DynamicValue::Integer(i),
+            Err(_) => DynamicValue::String(s)
+        };
+        Ok(v)
+    }
+}
+
+impl Serialize for DynamicValue {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer
+    {
+        match self {
+            DynamicValue::Integer(i) => i64::serialize(&i, serializer),
+            DynamicValue::String(s) => String::serialize(&s, serializer) 
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct AppConfigData {
     pub starting_room: Alias
@@ -173,7 +200,8 @@ pub struct NpcData {
     pub description: String,
     pub spawn_location: Alias,
     pub behavior_template: Option<String>,
-    pub event_subs: Option<HashSet<String>>
+    pub event_subs: Option<HashSet<String>>,
+    pub params: Option<HashMap<String, DynamicValue>> 
 }
 
 pub fn load_npcs(file: &str) -> Result<HashMap<EntityId, NpcData>, DataLoadError> {
